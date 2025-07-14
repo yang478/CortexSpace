@@ -968,7 +968,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const template = DOMElements.workspaceCardTemplate.content.cloneNode(true);
         const cardEl = template.querySelector('.workspace-card');
         const contentDiv = cardEl.querySelector('.card-content');
-        contentDiv.innerHTML = cardData.htmlContent;
+        
+        // FIX: Add type check to prevent visible [object Object]
+        let contentToRender = cardData.htmlContent;
+        if (typeof contentToRender !== 'string') {
+            console.error("Invalid card content (htmlContent). Expected string, got:", contentToRender);
+            contentToRender = `<p style="color: var(--danger-color);">[卡片内容渲染错误]</p>`;
+        }
+        contentDiv.innerHTML = contentToRender;
+
         cardEl.dataset.cardId = cardData.id;
 
         cardEl.querySelector('.card-explore-count').textContent = cardData.chats ? cardData.chats.length : 0;
@@ -1066,7 +1074,17 @@ document.addEventListener('DOMContentLoaded', () => {
         bubbleDiv.dataset.textContent = textContent || htmlContent;
         messageDiv.dataset.role = role;
         const contentDiv = messageDiv.querySelector('.message-content');
-        contentDiv.innerHTML = isHtml ? htmlContent : `<p>${htmlContent}</p>`;
+        
+        // FIX: Add type check to prevent visible [object Object]
+        let contentToRender = htmlContent;
+        if (typeof contentToRender !== 'string') {
+            console.error("Invalid htmlContent passed to addMessageToDOM. Expected string, got:", contentToRender);
+            contentToRender = `<p style="color: var(--danger-color);">[内容渲染错误]</p>`;
+            isHtml = true; // It's HTML now
+        }
+
+        contentDiv.innerHTML = isHtml ? contentToRender : `<p>${contentToRender}</p>`;
+
         if (role === 'assistant') {
             bubbleDiv.querySelector('.add-to-parent-card-btn').addEventListener('click', () => handleAddToParentCard(bubbleDiv));
             bubbleDiv.querySelector('.add-as-new-card-btn').addEventListener('click', () => addMessageAsNewCard(bubbleDiv));
