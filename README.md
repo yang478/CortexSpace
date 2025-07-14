@@ -5,7 +5,7 @@
 
 ---
 
-## 🇬🇧 English Introduction
+## English Introduction
 
 CortexSpace is not just another note-taking app. It's a powerful, **local-first** knowledge workspace designed to transform your scattered ideas into structured insights and completed tasks. By seamlessly integrating with **your own AI model**, it becomes a dynamic partner in your thinking process, helping you explore, synthesize, and create.
 
