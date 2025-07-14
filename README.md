@@ -1,14 +1,9 @@
 # CortexSpace
-# CortexSpace
 
-[**Try the Live Demo!**](https://your-github-username.github.io/your-repo-name/)
 
 [English Introduction](#-english-introduction) | [简体中文介绍](#-简体中文介绍)
 
 ---
-
-![CortexSpace Screenshot](https://user-images.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/assets/placeholder.png)
-*(Recommended: Replace this placeholder with a nice screenshot or GIF of the app in action, e.g., showing the split view or whiteboard.)*
 
 ## 🇬🇧 English Introduction
 
