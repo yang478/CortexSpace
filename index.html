@@ -1,0 +1,1977 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识工作空间 V4.3</title>
+    <style>
+        /* --- 1. 全局与主题 --- */
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #242424;
+            --bg-tertiary: #333333;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --accent-primary: #4a90e2;
+            --accent-secondary: #34c759;
+            --border-color: #444444;
+            --danger-color: #ff453a;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --font-mono: 'Fira Code', 'SF Mono', 'Menlo', 'Consolas', monospace;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --sidebar-width: 260px;
+        }
+
+        body.light-theme {
+            --bg-primary: #f5f5f7;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #e9e9eb;
+            --text-primary: #1d1d1f;
+            --text-secondary: #6e6e73;
+            --accent-primary: #007aff;
+            --accent-secondary: #30d158;
+            --border-color: #d1d1d6;
+            --danger-color: #ff3b30;
+            --shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; overflow: hidden; font-family: var(--font-sans); background-color: var(--bg-primary); color: var(--text-primary); font-size: 16px; transition: background-color 0.3s, color 0.3s; }
+
+        /* --- 2. 布局 --- */
+        .app-container { display: flex; height: 100vh; }
+        .sidebar { display: flex; flex-direction: column; background-color: var(--bg-secondary); border-right: 1px solid var(--border-color); padding: 1rem; transition: width 0.3s ease, padding 0.3s ease; }
+        .left-sidebar { width: var(--sidebar-width); flex-shrink: 0; }
+        .left-sidebar.collapsed { width: 60px; padding: 1rem 0.5rem; }
+        .left-sidebar.collapsed .sidebar-title, .left-sidebar.collapsed .workspace-name { display: none; }
+        .left-sidebar.collapsed .sidebar-header { justify-content: center; }
+        .left-sidebar.collapsed .sidebar-footer { justify-content: center; padding-left: 0; }
+        .workspace-canvas { flex-grow: 1; display: flex; flex-direction: column; height: 100%; background-color: var(--bg-primary); position: relative; }
+        
+        /* --- 3. 组件样式 --- */
+        .icon-button { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; transition: background-color 0.2s, color 0.2s, transform 0.1s; }
+        .icon-button:hover { background-color: var(--bg-tertiary); color: var(--text-primary); }
+        .icon-button:active { transform: scale(0.92); }
+        .icon-button svg { width: 20px; height: 20px; stroke-width: 2; }
+        .sidebar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0; position: relative; }
+        #sidebar-toggle-btn { position: absolute; right: -35px; top: 50%; transform: translateY(-50%); background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-left: none; border-top-right-radius: 6px; border-bottom-right-radius: 6px; padding: 8px 4px; z-index: 10; }
+        #sidebar-toggle-btn svg { transition: transform 0.3s ease; }
+        .left-sidebar.collapsed #sidebar-toggle-btn svg { transform: rotate(180deg); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .new-message, .new-card { animation: fadeIn 0.4s ease-out; }
+        .loading-dots { display: flex; align-items: center; gap: 4px; }
+        .loading-dots span { width: 8px; height: 8px; border-radius: 50%; background-color: var(--text-secondary); animation: bounce 1.4s infinite ease-in-out both; }
+        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1.0); } }
+
+        /* --- V4.3: 分栏视图 (Split View) --- */
+        .split-view-container { display: flex; flex-grow: 1; overflow: hidden; }
+        .split-view-pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; border-right: 1px solid var(--border-color); }
+        .split-view-pane:last-child { border-right: none; }
+        .split-view-resizer { flex-basis: 5px; cursor: col-resize; background-color: var(--border-color); transition: background-color 0.2s; }
+        .split-view-resizer:hover { background-color: var(--accent-primary); }
+        .pinned-card-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border-color); flex-shrink: 0; background-color: var(--bg-secondary); }
+        .pinned-card-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .pinned-card-content { flex-grow: 1; overflow-y: auto; padding: 1.5rem; }
+        .pinned-card-content .workspace-card { height: 100%; }
+        .pinned-card-content .workspace-card .card-footer { display: none; }
+        .pinned-card-content .workspace-card .card-actions { top: 0.75rem; right: 0.75rem; }
+
+        /* --- 卡片视图样式 --- */
+        #card-view-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+        #card-view-header .sidebar-title { font-size: 1.25rem; }
+        .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+        .view-switcher { display: flex; background-color: var(--bg-tertiary); border-radius: 6px; padding: 2px; }
+        .view-switcher .icon-button { padding: 6px; border-radius: 4px; }
+        .view-switcher .icon-button.active { background-color: var(--accent-primary); color: white; }
+        .card-view-content-area { flex-grow: 1; overflow-y: auto; padding: 1.5rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; align-content: flex-start; }
+        #action-plan-area { padding: 0 1.5rem 1.5rem; flex-shrink: 0; }
+        .workspace-card { background-color: var(--bg-tertiary); border-radius: 8px; padding: 1rem; position: relative; cursor: grab; transition: box-shadow 0.2s, transform 0.2s; display: flex; flex-direction: column; }
+        .workspace-card.dragging { opacity: 0.5; box-shadow: 0 8px 20px rgba(0,0,0,0.2); cursor: grabbing; transform: scale(1.05); }
+        .workspace-card.loading::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); border-radius: 8px; z-index: 5; }
+        .workspace-card.loading .card-content-wrapper { filter: blur(2px); }
+        .card-actions { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.25rem; background-color: rgba(36, 36, 36, 0.8); padding: 4px; border-radius: 6px; visibility: hidden; opacity: 0; transition: opacity 0.2s, visibility 0.2s; z-index: 6; }
+        .workspace-card:hover .card-actions { visibility: visible; opacity: 1; }
+        .card-content { line-height: 1.6; flex-grow: 1; }
+        .card-editor-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
+        .workspace-card-textarea { width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; padding: 0.5rem; font-family: var(--font-sans); font-size: 0.95rem; line-height: 1.6; min-height: 100px; resize: vertical; }
+        .workspace-card-textarea:focus { outline: none; border-color: var(--accent-primary); }
+        .card-footer { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; align-items: center; }
+        .card-explore-btn { background-color: var(--bg-primary); color: var(--text-secondary); border: 1px solid var(--border-color); padding: 5px 12px; border-radius: 15px; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
+        .card-explore-btn:hover { background-color: var(--accent-primary); border-color: var(--accent-primary); color: white; }
+        .card-explore-btn svg { width: 16px; height: 16px; }
+        .card-explore-count { background-color: var(--accent-primary); color: white; font-size: 0.75rem; font-weight: 500; border-radius: 8px; padding: 2px 6px; min-width: 18px; text-align: center; }
+
+        /* --- V4.3: 白板视图 (Whiteboard View) --- */
+        #whiteboard-view { flex-grow: 1; position: relative; overflow: hidden; background-color: var(--bg-primary); }
+        .whiteboard-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform-origin: 0 0; }
+        .whiteboard-node { position: absolute; width: 300px; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--shadow); cursor: grab; padding: 1rem; }
+        .whiteboard-node:active { cursor: grabbing; z-index: 10; }
+        .whiteboard-node-header { font-weight: 600; margin-bottom: 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .whiteboard-node-content { font-size: 0.9rem; color: var(--text-secondary); max-height: 100px; overflow: hidden; }
+
+        /* --- V4.3: 行动计划 (Action Plan) --- */
+        .action-plan-display { padding: 1rem; background-color: var(--bg-tertiary); border: 1px dashed var(--border-color); border-radius: 6px; color: var(--text-secondary); cursor: pointer; min-height: 50px; transition: background-color 0.2s; font-size: 0.95rem; line-height: 1.6; }
+        .action-plan-display:hover { background-color: var(--bg-primary); }
+        .action-plan-display.has-content { color: var(--text-primary); border-style: solid; border-color: var(--accent-primary); background-color: color-mix(in srgb, var(--accent-primary) 15%, transparent); }
+        .action-plan-display ul { list-style: none; padding-left: 0; }
+        .action-plan-display li.task-list-item { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.5rem; }
+        .action-plan-display li.task-list-item input[type="checkbox"] { margin-top: 5px; cursor: pointer; flex-shrink: 0; }
+        .action-plan-display li.task-list-item.checked p { text-decoration: line-through; color: var(--text-secondary); }
+
+        /* --- 探索对话框 (Chat Modal) 样式 --- */
+        #chat-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 2500; opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s; }
+        #chat-modal-overlay.visible { opacity: 1; visibility: visible; }
+        #chat-modal-content { background-color: var(--bg-secondary); border-radius: 12px; box-shadow: var(--shadow); width: 90%; max-width: 700px; height: 80vh; display: flex; flex-direction: column; transform: scale(0.95); transition: transform 0.3s; }
+        #chat-modal-overlay.visible #chat-modal-content { transform: scale(1); }
+        .chat-view-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem 0.75rem 1.5rem; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+        .chat-view-title-area { display: flex; align-items: center; gap: 1rem; overflow: hidden; }
+        .card-name-label { color: var(--text-secondary); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .chat-header-actions { display: flex; align-items: center; gap: 0.5rem; }
+        .chat-tabs-container { display: flex; align-items: center; padding: 0.5rem 1.5rem 0; border-bottom: 1px solid var(--border-color); flex-shrink: 0; overflow-x: auto; }
+        .chat-tab { padding: 0.75rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-secondary); transition: color 0.2s, border-color 0.2s; white-space: nowrap; position: relative; }
+        .chat-tab:hover { color: var(--text-primary); }
+        .chat-tab.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
+        .new-tab-btn { margin-left: 0.5rem; }
+        .chat-container { flex-grow: 1; overflow-y: auto; padding: 1.5rem; position: relative; }
+        .chat-message { display: flex; margin-bottom: 1.5rem; position: relative; }
+        .message-bubble { max-width: 80%; padding: 0.75rem 1rem; border-radius: 12px; line-height: 1.6; position: relative; }
+        .chat-message.user .message-bubble { background-color: var(--accent-primary); color: white; border-bottom-right-radius: 2px; margin-left: auto; }
+        .chat-message.assistant .message-bubble { background-color: var(--bg-tertiary); border-bottom-left-radius: 2px; }
+        .message-content p { margin-bottom: 1em; } .message-content p:last-child { margin-bottom: 0; } .message-content ol, .message-content ul { padding-left: 1.5rem; margin-bottom: 1em; } .message-content li { margin-bottom: 0.5em; }
+        .message-content code { font-family: var(--font-mono); background-color: var(--bg-primary); padding: 0.2em 0.4em; margin: 0; font-size: 85%; border-radius: 6px; }
+        .message-content pre { background-color: var(--bg-primary); padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 1rem 0; font-size: 0.9rem; }
+        .message-content pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+        .message-actions { position: absolute; bottom: -12px; right: 10px; display: flex; gap: 0.5rem; visibility: hidden; opacity: 0; transition: opacity 0.2s, visibility 0.2s; z-index: 1; }
+        .chat-message.assistant:hover .message-actions { visibility: visible; opacity: 1; }
+        .message-actions .icon-button { background-color: var(--accent-secondary); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; justify-content: center; align-items: center; box-shadow: var(--shadow); }
+        .message-actions .icon-button:hover { transform: scale(1.1); }
+        .message-actions .icon-button svg { width: 16px; height: 16px; }
+        .chat-input-area { padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); flex-shrink: 0; position: relative; }
+        .input-form { display: flex; flex-wrap: wrap; align-items: flex-end; background-color: var(--bg-primary); border-radius: 8px; padding: 0.5rem; }
+        .input-field-wrapper { flex-grow: 1; display: flex; }
+        .input-field { flex-grow: 1; background: none; border: none; color: var(--text-primary); font-size: 1rem; resize: none; max-height: 200px; padding: 0.5rem; }
+        .input-field:focus { outline: none; }
+        .send-button { width: 36px; height: 36px; border-radius: 6px; background-color: var(--accent-primary); color: white; display: flex; justify-content: center; align-items: center; margin-left: 0.5rem; flex-shrink: 0; transition: background-color 0.2s; }
+        .send-button:disabled { background-color: var(--bg-tertiary); cursor: not-allowed; }
+        
+        /* --- 选择模式样式 --- */
+        .selection-mode-btn { padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid var(--border-color); background-color: var(--bg-primary); color: var(--text-secondary); cursor: pointer; font-size: 0.9rem; transition: background-color 0.2s, color 0.2s; }
+        .selection-mode-btn:hover { background-color: var(--bg-tertiary); color: var(--text-primary); }
+        .selection-mode-btn.active { background-color: var(--accent-primary); color: white; border-color: var(--accent-primary); }
+        .message-selector-checkbox { display: none; margin-right: 1rem; width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent-primary); cursor: pointer; }
+        .chat-container.selection-mode-active .chat-message { align-items: center; }
+        .chat-container.selection-mode-active .message-selector-checkbox { display: block; }
+        .chat-container.selection-mode-active .chat-message.assistant:hover .message-actions { visibility: hidden; opacity: 0; }
+        .selection-mode-actions { position: absolute; bottom: 1rem; left: 50%; transform: translateX(-50%); background-color: var(--bg-tertiary); padding: 0.75rem 1.5rem; border-radius: 8px; box-shadow: var(--shadow); z-index: 100; display: none; gap: 1rem; align-items: center; }
+        .selection-mode-actions.visible { display: flex; animation: fadeIn 0.3s ease-out; }
+        .selection-mode-actions .action-btn { padding: 0.6rem 1.2rem; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: background-color 0.2s; }
+        .selection-mode-actions .primary { background-color: var(--accent-secondary); color: white; }
+        .selection-mode-actions .secondary { background-color: var(--bg-primary); color: var(--text-primary); }
+
+        /* --- 其他通用组件样式 --- */
+        .workspace-list { list-style: none; overflow-y: auto; flex-grow: 1; }
+        .workspace-item { display: flex; align-items: center; padding: 0.75rem; border-radius: 6px; cursor: pointer; transition: background-color 0.2s; margin-bottom: 0.25rem; position: relative; }
+        .workspace-item:hover { background-color: var(--bg-tertiary); }
+        .workspace-item.active { background-color: var(--accent-primary); color: white; }
+        .workspace-item.active .workspace-name, .workspace-item.active .workspace-menu-btn { color: white; }
+        .workspace-name { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+        .workspace-menu-btn { visibility: hidden; opacity: 0; transition: visibility 0s 0.2s, opacity 0.2s linear; }
+        .workspace-item:hover .workspace-menu-btn, .workspace-item.active .workspace-menu-btn { visibility: visible; opacity: 1; transition-delay: 0s; }
+        .sidebar-footer { margin-top: auto; padding-top: 0.5rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-start; padding-left: 0.5rem; }
+        .context-menu { position: absolute; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; z-index: 3000; box-shadow: var(--shadow); display: none; }
+        .context-menu-item { padding: 0.5rem 0.75rem; cursor: pointer; border-radius: 4px; white-space: nowrap; }
+        .context-menu-item:hover { background-color: var(--accent-primary); color: white; }
+        .context-menu-item.delete { color: var(--danger-color); }
+        .context-menu-item.delete:hover { background-color: var(--danger-color); color: white; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s; }
+        .modal-overlay.visible { opacity: 1; visibility: visible; }
+        .modal-content { background-color: var(--bg-secondary); padding: 2rem; border-radius: 12px; box-shadow: var(--shadow); max-width: 500px; width: 90%; transform: scale(0.95); transition: transform 0.3s; }
+        .modal-overlay.visible .modal-content { transform: scale(1); }
+        .modal-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; }
+        .modal-body { line-height: 1.6; margin-bottom: 1.5rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.9rem; font-weight: 500; }
+        .modal-subtitle { font-size: 1.1rem; font-weight: 600; color: var(--accent-primary); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); }
+        .modal-divider { border: none; border-top: 1px solid var(--border-color); margin: 1.5rem 0; }
+        .modal-input { width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); background-color: var(--bg-primary); border-radius: 6px; color: var(--text-primary); font-size: 1rem; }
+        .modal-input:focus { outline: none; border-color: var(--accent-primary); }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
+        .modal-button { padding: 0.6rem 1.2rem; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: background-color 0.2s; }
+        .modal-button.primary { background-color: var(--accent-primary); color: white; }
+        .modal-button.secondary { background-color: var(--bg-tertiary); color: var(--text-primary); }
+        .settings-section { margin-top: 2rem; }
+        .file-input-label { display: inline-block; padding: 0.6rem 1.2rem; background-color: var(--bg-tertiary); color: var(--text-primary); border-radius: 6px; cursor: pointer; transition: background-color 0.2s; }
+        .file-input-label:hover { background-color: var(--accent-secondary); color: white; }
+        #import-file-input { display: none; }
+        
+        /* --- V4.3: 大纲驱动合成 (Outline Synthesis) Modal --- */
+        #synthesis-modal .modal-content { max-width: 1200px; width: 90vw; height: 80vh; display: flex; flex-direction: column; padding: 0; }
+        .synthesis-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color); flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+        .synthesis-body { display: flex; flex-grow: 1; overflow: hidden; }
+        .synthesis-outline-pane { flex: 1; padding: 1.5rem; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow-y: auto; }
+        .synthesis-cards-pane { flex: 1; padding: 1.5rem; overflow-y: auto; }
+        .synthesis-pane-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; }
+        #synthesis-outline-list { list-style: none; }
+        .synthesis-outline-item { background-color: var(--bg-tertiary); border-radius: 6px; margin-bottom: 0.75rem; padding: 0.75rem; border-left: 3px solid transparent; }
+        .synthesis-outline-item.drop-target { border-left-color: var(--accent-primary); }
+        .outline-item-header { display: flex; align-items: center; gap: 0.5rem; }
+        .outline-item-input { flex-grow: 1; background: none; border: none; color: var(--text-primary); font-size: 1rem; padding: 0.25rem; }
+        .outline-item-input:focus { outline: 1px solid var(--accent-primary); border-radius: 2px; }
+        .outline-item-cards { margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .outline-card-pill { background-color: var(--accent-primary); color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.8rem; display: flex; align-items: center; gap: 4px; }
+        .pill-remove-btn { background: none; border: none; color: white; opacity: 0.7; cursor: pointer; padding: 0; line-height: 1; }
+        .pill-remove-btn:hover { opacity: 1; }
+        #add-outline-item-btn { margin-top: 1rem; width: 100%; }
+        .synthesis-card-item { background-color: var(--bg-tertiary); padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; cursor: grab; }
+        .synthesis-card-item:active { cursor: grabbing; }
+        .synthesis-preview-area { flex: 1; padding: 1.5rem; overflow-y: auto; background-color: var(--bg-primary); }
+        .synthesis-preview-area.loading { display: flex; justify-content: center; align-items: center; }
+
+        /* --- 命令面板样式 --- */
+        .command-palette-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); display: none; justify-content: center; align-items: flex-start; z-index: 3000; padding-top: 15vh; }
+        .command-palette-overlay.visible { display: flex; }
+        .command-palette { width: 100%; max-width: 600px; background-color: var(--bg-secondary); border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; }
+        .command-palette-input-wrapper { padding: 0.75rem; border-bottom: 1px solid var(--border-color); }
+        .command-palette-input { width: 100%; background: none; border: none; color: var(--text-primary); font-size: 1.1rem; padding: 0.5rem; }
+        .command-palette-input:focus { outline: none; }
+        .command-palette-results { list-style: none; max-height: 400px; overflow-y: auto; }
+        .command-palette-item { padding: 0.75rem 1.25rem; cursor: pointer; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .command-palette-item:last-child { border-bottom: none; }
+        .command-palette-item.selected { background-color: var(--accent-primary); color: white; }
+        .command-palette-item-group { font-size: 0.8rem; color: var(--text-secondary); }
+        .command-palette-item.selected .command-palette-item-group { color: rgba(255, 255, 255, 0.7); }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" id="highlight-theme-dark">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css" id="highlight-theme-light" disabled>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- 左侧边栏: 工作空间列表 -->
+        <aside class="sidebar left-sidebar" id="left-sidebar">
+            <div class="sidebar-header">
+                <h2 class="sidebar-title">工作空间</h2>
+                <button class="icon-button" id="new-workspace-btn" title="新建工作空间">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                </button>
+                <button class="icon-button" id="sidebar-toggle-btn" title="折叠/展开侧边栏">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                </button>
+            </div>
+            <ul class="workspace-list" id="workspace-list"></ul>
+            <div class="sidebar-footer">
+                <button class="icon-button" id="settings-btn" title="设置">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l-.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0 2l.15-.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 工作空间画布 -->
+        <main class="workspace-canvas" id="workspace-canvas">
+            <div id="card-view-header">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <h2 class="sidebar-title" id="workspace-title">知识工作空间</h2>
+                    <button class="icon-button" id="workspace-settings-btn" title="工作空间设置">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.25 2.75 1.84 1.84"/><path d="m13.25 2.75 1.51 1.51"/><path d="M2.75 9.25l1.84 1.84"/><path d="M2.75 13.25l1.51 1.51"/><path d="m9.25 21.25 1.84-1.84"/><path d="m13.25 21.25 1.51-1.51"/><path d="M21.25 9.25l-1.84 1.84"/><path d="M21.25 13.25l-1.51 1.51"/><circle cx="12" cy="12" r="1"/><path d="M9.5 14.5c-1.28-1.28-1.28-3.72 0-5s3.72-1.28 5 0"/><path d="M14.5 9.5c1.28 1.28 1.28 3.72 0 5s-3.72 1.28-5 0"/></svg>
+                    </button>
+                </div>
+                <div class="header-actions">
+                    <!-- V4.3: View Switcher -->
+                    <div class="view-switcher">
+                        <button class="icon-button active" id="view-switch-grid" title="网格视图">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                        </button>
+                        <button class="icon-button" id="view-switch-whiteboard" title="白板视图">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+                        </button>
+                    </div>
+                    <button class="icon-button" id="new-card-btn" title="添加新卡片">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- V4.3: Main content area now a flex container for split view -->
+            <div class="split-view-container" id="main-content-container">
+                <!-- Panes will be dynamically inserted here -->
+            </div>
+            
+            <div id="action-plan-area">
+                <div id="action-plan-display" class="action-plan-display" title="点击编辑行动计划">点击设定本工作空间的行动计划...</div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 探索对话框 (Chat Modal) -->
+    <div class="modal-overlay" id="chat-modal-overlay">
+        <div id="chat-modal-content">
+            <div class="chat-view-header">
+                 <div class="chat-view-title-area">
+                    <span class="card-name-label" id="chat-view-card-name-label"></span>
+                 </div>
+                 <div class="chat-header-actions">
+                    <button class="selection-mode-btn" id="selection-mode-btn" title="批量选择">选择</button>
+                    <button class="icon-button" id="chat-modal-close-btn" title="关闭">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                 </div>
+            </div>
+            <div class="chat-tabs-container" id="chat-tabs-container"></div>
+            <div class="chat-container" id="chat-container">
+                <div class="selection-mode-actions" id="selection-mode-actions">
+                    <button class="action-btn primary" id="add-selected-to-workspace-btn">创建为新卡片</button>
+                    <button class="action-btn secondary" id="cancel-selection-mode-btn">取消</button>
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <form class="input-form" id="explore-form">
+                    <div class="input-field-wrapper" id="input-field-wrapper">
+                         <textarea class="input-field" id="explore-input" placeholder="围绕当前卡片继续探索..." rows="1"></textarea>
+                    </div>
+                    <button type="submit" class="icon-button send-button" id="explore-send-btn" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="m22 2-11 11"/></svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 其他模态框 -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-content">
+            <h3 class="modal-title">设置</h3>
+            <div class="modal-body">
+                <h4 class="modal-subtitle">外观</h4>
+                <div class="form-group" style="display: flex; justify-content: space-between; align-items: center;">
+                    <label for="theme-toggle-switch">亮色主题</label>
+                    <input type="checkbox" id="theme-toggle-switch">
+                </div>
+                <hr class="modal-divider">
+                <h4 class="modal-subtitle">模型配置</h4>
+                 <div class="form-group">
+                    <label for="api-url-input">URL</label>
+                    <input type="text" id="api-url-input" class="modal-input" placeholder="例如: https://api.openai.com/v1">
+                </div>
+                <div class="form-group">
+                    <label for="api-key-input">API Key</label>
+                    <input type="password" id="api-key-input" class="modal-input" placeholder="sk-...">
+                </div>
+                <div class="form-group">
+                    <label for="api-model-input">Model</label>
+                    <input type="text" id="api-model-input" class="modal-input" placeholder="例如: gpt-4-turbo">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="modal-button secondary" id="settings-cancel-btn">关闭</button>
+                <button class="modal-button primary" id="settings-save-btn">保存设置</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal-overlay" id="privacy-modal"> <div class="modal-content"> <h3 class="modal-title">欢迎使用知识工作空间 V4.3</h3> <div class="modal-body"> <p>本次更新聚焦于 **任务完成**，引入了 **分栏视图**、**大纲驱动合成**、**白板视图** 和 **行动计划** 四大核心功能，旨在将工具从信息容器提升为任务完成引擎。</p><p>您的所有数据将仅保存在此设备的当前浏览器中。清理浏览器缓存或更换设备可能导致数据丢失，请注意自行备份。</p> <p style="margin-top: 1em; color: var(--accent-primary);"><strong>注意：</strong>对话功能需要您在设置中提供自己的 AI 模型 API Key。</p> </div> <div class="modal-actions"> <button class="modal-button primary" id="privacy-modal-close-btn">我已知晓</button> </div> </div> </div>
+    
+    <!-- V4.3: 大纲驱动合成 (Outline Synthesis) Modal -->
+    <div class="modal-overlay" id="synthesis-modal">
+        <div class="modal-content">
+            <div class="synthesis-header">
+                <h3 class="modal-title" style="margin: 0;">大纲驱动合成</h3>
+                <div class="modal-actions">
+                    <button class="modal-button secondary" id="synthesis-cancel-btn">取消</button>
+                    <button class="modal-button primary" id="synthesis-generate-btn">生成报告</button>
+                </div>
+            </div>
+            <div class="synthesis-body">
+                <div class="synthesis-outline-pane">
+                    <h4 class="synthesis-pane-title">1. 构建报告大纲</h4>
+                    <ul id="synthesis-outline-list">
+                        <!-- Outline items will be generated here -->
+                    </ul>
+                    <button class="modal-button secondary" id="add-outline-item-btn" style="margin-top: 1rem; width: 100%;">添加章节</button>
+                </div>
+                <div class="synthesis-cards-pane">
+                    <h4 class="synthesis-pane-title">2. 拖拽参考资料</h4>
+                    <div id="synthesis-card-list">
+                        <!-- Draggable cards will be generated here -->
+                    </div>
+                </div>
+                <div class="synthesis-preview-area" id="synthesis-preview-area">
+                    <p style="color: var(--text-secondary);">报告生成后将在此处预览...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="command-palette-overlay" id="command-palette-overlay">
+        <div class="command-palette">
+            <div class="command-palette-input-wrapper">
+                <input type="text" class="command-palette-input" id="command-palette-input" placeholder="搜索命令或导航...">
+            </div>
+            <ul class="command-palette-results" id="command-palette-results"></ul>
+        </div>
+    </div>
+
+    <!-- 上下文菜单 -->
+    <div class="context-menu" id="workspace-context-menu"> <div class="context-menu-item" data-action="rename">重命名</div> <div class="context-menu-item delete" data-action="delete">删除</div> </div>
+    <div class="context-menu" id="workspace-settings-context-menu">
+        <div class="context-menu-item" data-action="rename-workspace">重命名工作空间</div>
+        <div class="context-menu-item" data-action="set-action-plan">编辑行动计划</div>
+        <div class="context-menu-item" data-action="ai-generate-plan">AI 辅助规划</div>
+        <div class="context-menu-item" data-action="synthesize-report">大纲驱动合成</div>
+        <div class="context-menu-item" data-action="export-zip">导出为 .zip</div>
+        <div class="context-menu-item" data-action="export-md">导出为 .md</div>
+        <div class="context-menu-item">
+            <label for="import-file-input" style="cursor: pointer; display: block; padding: 0; margin: 0;">导入工作空间</label>
+            <input type="file" id="import-file-input" accept=".zip,.json" style="display:none;">
+        </div>
+    </div>
+    <div class="context-menu" id="card-actions-context-menu">
+        <div class="context-menu-item" data-action="pin-to-view">钉到分栏</div>
+        <div class="context-menu-item" data-action="rewrite">改写</div>
+        <div class="context-menu-item" data-action="expand">扩写</div>
+        <div class="context-menu-item" data-action="summarize">缩写</div>
+    </div>
+    <div class="context-menu" id="chat-tab-context-menu"> <div class="context-menu-item" data-action="rename">重命名</div> <div class="context-menu-item delete" data-action="delete">删除</div> </div>
+
+    <!-- Templates -->
+    <template id="workspace-item-template"> <li class="workspace-item"> <span class="workspace-name"></span> <button class="icon-button workspace-menu-btn" title="菜单"> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg> </button> </li> </template>
+    <template id="chat-tab-template"> <div class="chat-tab"></div> </template>
+    
+    <template id="chat-message-template">
+        <div class="chat-message">
+            <input type="checkbox" class="message-selector-checkbox" title="选择此消息">
+            <div class="message-bubble">
+                <div class="message-content"></div>
+                <div class="message-actions">
+                    <button class="icon-button add-to-parent-card-btn" title="追加到父卡片">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+                    </button>
+                    <button class="icon-button add-as-new-card-btn" title="创建为新卡片">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+    
+    <template id="workspace-card-template">
+        <div class="workspace-card" draggable="true">
+            <div class="card-content-wrapper">
+                <div class="card-content"></div>
+                <div class="card-editor" style="display: none;">
+                    <textarea class="workspace-card-textarea"></textarea>
+                    <div class="card-editor-actions">
+                        <button class="modal-button secondary card-edit-cancel-btn">取消</button>
+                        <button class="modal-button primary card-edit-save-btn">保存</button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-actions">
+                <button class="icon-button card-edit-btn" title="编辑"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
+                <button class="icon-button card-delete-btn" title="删除"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                <button class="icon-button card-more-actions-btn" title="更多操作"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+            </div>
+            <div class="card-footer">
+                <button class="card-explore-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    <span>探索</span>
+                    <span class="card-explore-count">0</span>
+                </button>
+            </div>
+        </div>
+    </template>
+    
+    <!-- V4.3 Templates -->
+    <template id="synthesis-outline-item-template">
+        <li class="synthesis-outline-item" draggable="true">
+            <div class="outline-item-header">
+                <input type="text" class="outline-item-input" placeholder="新章节标题">
+                <button class="icon-button outline-item-delete-btn" title="删除章节">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+            </div>
+            <div class="outline-item-cards"></div>
+        </li>
+    </template>
+    <template id="synthesis-card-item-template">
+        <div class="synthesis-card-item" draggable="true"></div>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.0/FileSaver.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
+
+    <script>
+// V4.3: Extend marked to support GFM task lists with interactive checkboxes
+const renderer = new marked.Renderer();
+renderer.listitem = function(text, task, checked) {
+  if (task) {
+    // Add a data-task-text attribute to find and replace the markdown source
+    return `<li class="task-list-item ${checked ? 'checked' : ''}"><input type="checkbox" ${checked ? 'checked' : ''}> <p>${text}</p></li>`;
+  }
+  return `<li>${text}</li>`;
+};
+marked.setOptions({
+    renderer: renderer,
+    highlight: function(code, lang) {
+        const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+        return hljs.highlight(code, { language }).value;
+    },
+    langPrefix: 'hljs language-'
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+
+    const DB_NAME = 'KnowledgeWorkspaceDB';
+    const DB_VERSION = 7; // V4.3: BUMPED VERSION FOR WHITEBOARD DATA MODEL
+    let db;
+
+    const state = {
+        workspaces: [],
+        activeWorkspaceId: null,
+        isEditingCard: false,
+        contextMenuTargetId: null,
+        contextMenuType: null,
+        isSidebarCollapsed: false,
+        currentTheme: 'dark',
+        activeCardForChatViewId: null,
+        activeChatInCardId: null,
+        isCommandPaletteOpen: false,
+        commandPaletteSelectedIndex: 0,
+        isSelectionModeActive: false,
+        // V4.3 State
+        activeView: 'grid', // 'grid' or 'whiteboard'
+        pinnedCardIds: [],
+        synthesisOutline: [],
+        whiteboardState: { pan: { x: 0, y: 0 }, zoom: 1 },
+    };
+
+    let currentStreamController = null;
+    let fuse;
+    let commands = [];
+
+    const DOMElements = {
+        // Layout
+        leftSidebar: document.getElementById('left-sidebar'),
+        sidebarToggleBtn: document.getElementById('sidebar-toggle-btn'),
+        newWorkspaceBtn: document.getElementById('new-workspace-btn'),
+        workspaceList: document.getElementById('workspace-list'),
+        workspaceCanvas: document.getElementById('workspace-canvas'),
+        mainContentContainer: document.getElementById('main-content-container'),
+        // Card View
+        cardViewHeader: document.getElementById('card-view-header'),
+        workspaceTitle: document.getElementById('workspace-title'),
+        workspaceSettingsBtn: document.getElementById('workspace-settings-btn'),
+        newCardBtn: document.getElementById('new-card-btn'),
+        // V4.3: Action Plan
+        actionPlanArea: document.getElementById('action-plan-area'),
+        actionPlanDisplay: document.getElementById('action-plan-display'),
+        // V4.3: View Switcher
+        viewSwitchGridBtn: document.getElementById('view-switch-grid'),
+        viewSwitchWhiteboardBtn: document.getElementById('view-switch-whiteboard'),
+        // Chat Modal
+        chatModalOverlay: document.getElementById('chat-modal-overlay'),
+        chatModalContent: document.getElementById('chat-modal-content'),
+        chatModalCloseBtn: document.getElementById('chat-modal-close-btn'),
+        chatViewCardNameLabel: document.getElementById('chat-view-card-name-label'),
+        chatTabsContainer: document.getElementById('chat-tabs-container'),
+        chatContainer: document.getElementById('chat-container'),
+        exploreForm: document.getElementById('explore-form'),
+        exploreInput: document.getElementById('explore-input'),
+        exploreSendBtn: document.getElementById('explore-send-btn'),
+        selectionModeBtn: document.getElementById('selection-mode-btn'),
+        selectionModeActions: document.getElementById('selection-mode-actions'),
+        addSelectedToWorkspaceBtn: document.getElementById('add-selected-to-workspace-btn'),
+        cancelSelectionModeBtn: document.getElementById('cancel-selection-mode-btn'),
+        // Modals & Settings
+        settingsBtn: document.getElementById('settings-btn'),
+        settingsModal: document.getElementById('settings-modal'),
+        themeToggleSwitch: document.getElementById('theme-toggle-switch'),
+        highlightThemeDark: document.getElementById('highlight-theme-dark'),
+        highlightThemeLight: document.getElementById('highlight-theme-light'),
+        importFileInput: document.getElementById('import-file-input'),
+        apiUrlInput: document.getElementById('api-url-input'),
+        apiKeyInput: document.getElementById('api-key-input'),
+        apiModelInput: document.getElementById('api-model-input'),
+        settingsCancelBtn: document.getElementById('settings-cancel-btn'),
+        settingsSaveBtn: document.getElementById('settings-save-btn'),
+        privacyModal: document.getElementById('privacy-modal'),
+        privacyModalCloseBtn: document.getElementById('privacy-modal-close-btn'),
+        // V4.3: Synthesis Modal
+        synthesisModal: document.getElementById('synthesis-modal'),
+        synthesisCancelBtn: document.getElementById('synthesis-cancel-btn'),
+        synthesisGenerateBtn: document.getElementById('synthesis-generate-btn'),
+        synthesisOutlineList: document.getElementById('synthesis-outline-list'),
+        addOutlineItemBtn: document.getElementById('add-outline-item-btn'),
+        synthesisCardList: document.getElementById('synthesis-card-list'),
+        synthesisPreviewArea: document.getElementById('synthesis-preview-area'),
+        // Command Palette
+        commandPaletteOverlay: document.getElementById('command-palette-overlay'),
+        commandPaletteInput: document.getElementById('command-palette-input'),
+        commandPaletteResults: document.getElementById('command-palette-results'),
+        // Context Menus & Templates
+        workspaceContextMenu: document.getElementById('workspace-context-menu'),
+        workspaceSettingsContextMenu: document.getElementById('workspace-settings-context-menu'),
+        cardActionsContextMenu: document.getElementById('card-actions-context-menu'),
+        chatTabContextMenu: document.getElementById('chat-tab-context-menu'),
+        workspaceItemTemplate: document.getElementById('workspace-item-template'),
+        chatTabTemplate: document.getElementById('chat-tab-template'),
+        chatMessageTemplate: document.getElementById('chat-message-template'),
+        workspaceCardTemplate: document.getElementById('workspace-card-template'),
+        synthesisOutlineItemTemplate: document.getElementById('synthesis-outline-item-template'),
+        synthesisCardItemTemplate: document.getElementById('synthesis-card-item-template'),
+    };
+    
+    // --- DB Operations (Updated for V4.3 Migration) ---
+    function initDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                const transaction = event.target.transaction;
+                let workspaceStore;
+
+                if (!db.objectStoreNames.contains('workspaces')) {
+                    workspaceStore = db.createObjectStore('workspaces', { keyPath: 'id' });
+                } else {
+                    workspaceStore = transaction.objectStore('workspaces');
+                }
+                
+                if (event.oldVersion < 6) {
+                    // Migration from V4.1 (groups) to V4.2 (flat cards)
+                    workspaceStore.openCursor().onsuccess = (e) => {
+                        const cursor = e.target.result;
+                        if (cursor) {
+                            const workspace = cursor.value;
+                            if (workspace.groups && Array.isArray(workspace.groups)) {
+                                workspace.cards = workspace.groups.flatMap(group => group.cards || []);
+                                delete workspace.groups;
+                                cursor.update(workspace);
+                            }
+                            cursor.continue();
+                        }
+                    };
+                }
+
+                if (event.oldVersion < 7) {
+                    // Migration to V4.3 (add whiteboardLayout)
+                    workspaceStore.openCursor().onsuccess = (e) => {
+                        const cursor = e.target.result;
+                        if (cursor) {
+                            const workspace = cursor.value;
+                            if (typeof workspace.whiteboardLayout === 'undefined') {
+                                workspace.whiteboardLayout = { nodes: [], edges: [], notes: [] };
+                                cursor.update(workspace);
+                            }
+                            if (typeof workspace.goal === 'undefined') {
+                                workspace.goal = '';
+                            }
+                            cursor.continue();
+                        }
+                    };
+                }
+
+                if (!db.objectStoreNames.contains('messages')) {
+                    const messageStore = db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
+                    messageStore.createIndex('chatId', 'chatId', { unique: false });
+                }
+            };
+            request.onsuccess = (event) => { db = event.target.result; resolve(db); };
+            request.onerror = (event) => { console.error("Database error: ", event.target.errorCode); reject(event.target.errorCode); };
+        });
+    }
+    const dbActions = { getAll: (storeName) => new Promise((resolve, reject) => { const transaction = db.transaction(storeName, 'readonly'); const store = transaction.objectStore(storeName); const request = store.getAll(); request.onsuccess = () => resolve(request.result); request.onerror = (e) => reject(e.target.error); }), put: (storeName, item) => new Promise((resolve, reject) => { const transaction = db.transaction(storeName, 'readwrite'); const store = transaction.objectStore(storeName); const request = store.put(item); request.onsuccess = () => resolve(request.result); request.onerror = (e) => reject(e.target.error); }), delete: (storeName, key) => new Promise((resolve, reject) => { const transaction = db.transaction(storeName, 'readwrite'); const store = transaction.objectStore(storeName); const request = store.delete(key); request.onsuccess = () => resolve(); request.onerror = (e) => reject(e.target.error); }), getMessagesByChat: (chatId) => new Promise((resolve, reject) => { const transaction = db.transaction('messages', 'readonly'); const store = transaction.objectStore('messages'); const index = store.index('chatId'); const request = index.getAll(chatId); request.onsuccess = () => resolve(request.result); request.onerror = (e) => reject(e.target.error); }), deleteMessagesByChat: (chatId) => new Promise((resolve, reject) => { const transaction = db.transaction('messages', 'readwrite'); const store = transaction.objectStore('messages'); const index = store.index('chatId'); const request = index.openCursor(IDBKeyRange.only(chatId)); request.onsuccess = (event) => { const cursor = event.target.result; if (cursor) { cursor.delete(); cursor.continue(); } else { resolve(); } }; request.onerror = (e) => reject(e.target.error); }), };
+    
+    // --- View Management ---
+    function openChatModal(cardId) { state.activeCardForChatViewId = cardId; DOMElements.chatModalOverlay.classList.add('visible'); renderChatModalContent(); }
+    function closeChatModal() { if (state.isSelectionModeActive) { toggleSelectionMode(false); } state.activeCardForChatViewId = null; state.activeChatInCardId = null; DOMElements.chatModalOverlay.classList.remove('visible'); }
+
+    // --- Rendering Functions ---
+    function renderWorkspaceList() { DOMElements.workspaceList.innerHTML = ''; state.workspaces.forEach(ws => { const template = DOMElements.workspaceItemTemplate.content.cloneNode(true); const li = template.querySelector('.workspace-item'); li.dataset.id = ws.id; li.querySelector('.workspace-name').textContent = ws.name; if (ws.id === state.activeWorkspaceId) li.classList.add('active'); li.addEventListener('click', () => switchActiveWorkspace(ws.id)); li.querySelector('.workspace-menu-btn').addEventListener('click', (e) => { e.stopPropagation(); showContextMenu(e, 'workspace', ws.id); }); DOMElements.workspaceList.appendChild(li); }); }
+
+    function renderLayout() {
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace) return;
+        
+        DOMElements.workspaceTitle.textContent = activeWorkspace.name;
+        DOMElements.mainContentContainer.innerHTML = '';
+
+        if (state.pinnedCardIds.length > 0) {
+            // Render Split View
+            state.pinnedCardIds.forEach((cardId, index) => {
+                const pane = createSplitViewPane(cardId);
+                DOMElements.mainContentContainer.appendChild(pane);
+                if (index < state.pinnedCardIds.length) { // Add resizer between panes
+                    const resizer = document.createElement('div');
+                    resizer.className = 'split-view-resizer';
+                    resizer.addEventListener('mousedown', initResize);
+                    DOMElements.mainContentContainer.appendChild(resizer);
+                }
+            });
+            const mainContentPane = createMainContentPane();
+            DOMElements.mainContentContainer.appendChild(mainContentPane);
+        } else {
+            // Render Single View (Grid or Whiteboard)
+            const mainContentPane = createMainContentPane();
+            DOMElements.mainContentContainer.appendChild(mainContentPane);
+        }
+        renderActionPlan();
+    }
+
+    function createMainContentPane() {
+        const pane = document.createElement('div');
+        pane.className = 'split-view-pane';
+        pane.id = 'main-view-pane';
+
+        if (state.activeView === 'grid') {
+            const gridView = document.createElement('div');
+            gridView.id = 'card-view-content-area';
+            gridView.className = 'card-view-content-area';
+            pane.appendChild(gridView);
+            renderCardViewContent(gridView);
+        } else { // whiteboard
+            const whiteboardView = document.createElement('div');
+            whiteboardView.id = 'whiteboard-view';
+            pane.appendChild(whiteboardView);
+            renderWhiteboardView(whiteboardView);
+        }
+        return pane;
+    }
+
+    function renderCardViewContent(container) {
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace) return;
+        
+        const cardContainer = container || document.getElementById('card-view-content-area');
+        if (!cardContainer) return;
+        cardContainer.innerHTML = '';
+
+        if (!activeWorkspace.cards) activeWorkspace.cards = [];
+        const unpinnedCards = activeWorkspace.cards.filter(card => !state.pinnedCardIds.includes(card.id));
+        unpinnedCards.forEach(cardData => {
+            const cardElement = createWorkspaceCard(cardData);
+            cardContainer.appendChild(cardElement);
+        });
+        highlightCodeIn(cardContainer);
+    }
+    
+    async function renderChatModalContent() {
+        const { card, workspace } = findCardAndWorkspace(state.activeCardForChatViewId);
+        if (!card) { closeChatModal(); return; }
+
+        const cardTitle = (card.textContent.split('\n')[0].trim() || '无标题卡片').substring(0, 50);
+        DOMElements.chatViewCardNameLabel.textContent = `探索: "${cardTitle}"`;
+        DOMElements.chatViewCardNameLabel.title = card.textContent.split('\n')[0].trim() || '无标题卡片';
+
+        if (!card.chats || card.chats.length === 0) {
+            card.chats = [{ id: `chat_${Date.now()}`, name: '探索 1' }];
+            await dbActions.put('workspaces', workspace);
+        }
+        
+        if (!card.activeChatId || !card.chats.some(c => c.id === card.activeChatId)) {
+            card.activeChatId = card.chats[card.chats.length - 1].id;
+        }
+        state.activeChatInCardId = card.activeChatId;
+        
+        renderChatTabs();
+        await renderExploreMessages();
+    }
+    
+    function renderChatTabs() {
+        DOMElements.chatTabsContainer.innerHTML = '';
+        const { card } = findCardAndWorkspace(state.activeCardForChatViewId);
+        if (!card || !card.chats) return;
+
+        card.chats.forEach(chat => {
+            const template = DOMElements.chatTabTemplate.content.cloneNode(true);
+            const tab = template.querySelector('.chat-tab');
+            tab.textContent = chat.name;
+            tab.dataset.id = chat.id;
+            if(chat.id === state.activeChatInCardId) tab.classList.add('active');
+            tab.addEventListener('click', () => switchActiveChatInCard(chat.id));
+            tab.addEventListener('contextmenu', (e) => { e.preventDefault(); showContextMenu(e, 'chat', chat.id); });
+            DOMElements.chatTabsContainer.appendChild(tab);
+        });
+        const newTabBtn = document.createElement('button');
+        newTabBtn.className = 'icon-button new-tab-btn';
+        newTabBtn.title = '新建探索';
+        newTabBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`;
+        newTabBtn.addEventListener('click', createNewChatInCard);
+        DOMElements.chatTabsContainer.appendChild(newTabBtn);
+    }
+    
+    async function renderExploreMessages() {
+        DOMElements.chatContainer.innerHTML = '';
+        DOMElements.chatContainer.appendChild(DOMElements.selectionModeActions);
+        if (!state.activeChatInCardId) return;
+        const messages = await dbActions.getMessagesByChat(state.activeChatInCardId);
+        messages.sort((a, b) => a.id - b.id);
+        messages.forEach(msg => addMessageToDOM(msg.role, msg.htmlContent, msg.content, true));
+        highlightCodeIn(DOMElements.chatContainer);
+        DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
+    }
+
+    function renderActionPlan() { 
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId); 
+        if (!activeWorkspace) return; 
+        const plan = activeWorkspace.goal || ''; 
+        if (plan) {
+            const html = marked.parse(plan);
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            
+            // Make checkboxes interactive
+            tempDiv.querySelectorAll('li.task-list-item').forEach((li, index) => {
+                const checkbox = li.querySelector('input[type="checkbox"]');
+                if (checkbox) {
+                    checkbox.dataset.lineIndex = index;
+                    checkbox.addEventListener('change', handleTaskToggle);
+                }
+            });
+            DOMElements.actionPlanDisplay.innerHTML = '';
+            DOMElements.actionPlanDisplay.appendChild(tempDiv);
+        } else {
+            DOMElements.actionPlanDisplay.innerHTML = '点击设定本工作空间的行动计划...';
+        }
+        DOMElements.actionPlanDisplay.classList.toggle('has-content', !!plan); 
+    }
+
+    // --- Core Logic & App Flow ---
+    async function initializeApp() {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        setTheme(savedTheme);
+        const savedSidebarState = localStorage.getItem('sidebarCollapsed') === 'true';
+        setSidebarCollapsed(savedSidebarState);
+
+        await initDB();
+        state.workspaces = await dbActions.getAll('workspaces');
+        const lastActiveId = localStorage.getItem('activeWorkspaceId');
+        
+        if (state.workspaces.length === 0) {
+            await createNewWorkspace('我的第一个工作空间');
+        } else {
+            const idToLoad = lastActiveId && state.workspaces.some(ws => ws.id === lastActiveId) ? lastActiveId : state.workspaces[0].id;
+            await switchActiveWorkspace(idToLoad);
+        }
+        
+        if (!localStorage.getItem('privacyNoticeShown_v4.3')) {
+            DOMElements.privacyModal.classList.add('visible');
+        }
+    }
+    
+    async function createNewWorkspace(name) { 
+        const newCard = { id: `card_${Date.now()}`, textContent: '欢迎使用！双击卡片可以编辑内容，点击下方的“探索”按钮可以围绕卡片进行对话。', htmlContent: '<p>欢迎使用！双击卡片可以编辑内容，点击下方的“探索”按钮可以围绕卡片进行对话。</p>', chats: [], tags: [], createdAt: new Date().toISOString() };
+        const newWorkspace = { id: `ws_${Date.now()}`, name: name, createdAt: new Date().toISOString(), goal: `- [ ] 探索V4.3新功能\n- [ ] 创建我的第一个项目计划`, cards: [newCard], whiteboardLayout: { nodes: [], edges: [], notes: [] } }; 
+        await dbActions.put('workspaces', newWorkspace); 
+        state.workspaces.push(newWorkspace); 
+        await switchActiveWorkspace(newWorkspace.id); 
+    }
+
+    async function switchActiveWorkspace(id) {
+        if (!id) {
+            state.activeWorkspaceId = null;
+            DOMElements.mainContentContainer.innerHTML = '';
+            DOMElements.workspaceTitle.textContent = '无工作空间';
+            return;
+        }
+        state.activeWorkspaceId = id;
+        localStorage.setItem('activeWorkspaceId', id);
+        state.pinnedCardIds = []; // Reset pinned cards on workspace switch
+        renderWorkspaceList();
+        renderLayout();
+    }
+    
+    async function createNewChatInCard() {
+        const { card, workspace } = findCardAndWorkspace(state.activeCardForChatViewId);
+        if (!card) return;
+        const newChat = { id: `chat_${Date.now()}`, name: `探索 ${card.chats.length + 1}` };
+        card.chats.push(newChat);
+        await dbActions.put('workspaces', workspace);
+        await switchActiveChatInCard(newChat.id);
+    }
+
+    async function switchActiveChatInCard(chatId) {
+        if (state.isSelectionModeActive) { toggleSelectionMode(false); }
+        const { card, workspace } = findCardAndWorkspace(state.activeCardForChatViewId);
+        if (!card || state.activeChatInCardId === chatId) return;
+        
+        state.activeChatInCardId = chatId;
+        card.activeChatId = chatId;
+        await dbActions.put('workspaces', workspace);
+        
+        renderChatTabs();
+        await renderExploreMessages();
+    }
+
+    async function handleExploreChat(e) {
+        e.preventDefault();
+        if (currentStreamController) { currentStreamController.abort(); return; }
+
+        const prompt = DOMElements.exploreInput.value.trim();
+        if (!prompt || !state.activeChatInCardId) return;
+
+        currentStreamController = new AbortController();
+        updateSendButtonState(true);
+
+        DOMElements.exploreInput.value = '';
+        adjustTextareaHeight(DOMElements.exploreInput);
+        toggleSendButton();
+
+        addMessageToDOM('user', `<p>${prompt}</p>`, prompt, true);
+        const userMessageToSave = { chatId: state.activeChatInCardId, role: 'user', content: prompt, htmlContent: `<p>${prompt}</p>` };
+        await dbActions.put('messages', userMessageToSave);
+
+        const { card } = findCardAndWorkspace(state.activeCardForChatViewId);
+        const historyMessages = (await dbActions.getMessagesByChat(state.activeChatInCardId)).slice(-10);
+        
+        const apiMessages = [];
+        if (card && card.textContent) {
+            apiMessages.push({ role: 'system', content: `You are an assistant helping to explore a topic. The user has provided the following context card. Base your conversation on it.\n\n--- Context Card ---\n${card.textContent}` });
+        }
+        apiMessages.push(...historyMessages.map(msg => ({ role: msg.role, content: msg.content })));
+        
+        const botMessageBubble = addMessageToDOM('assistant', '<div class="loading-dots"><span></span><span></span><span></span></div>', '', true);
+        const contentDiv = botMessageBubble.querySelector('.message-content');
+        
+        try {
+            const finalContent = await callLLM(apiMessages, (streamedContent) => {
+                contentDiv.innerHTML = marked.parse(streamedContent);
+                DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
+            }, currentStreamController.signal);
+
+            const finalHtml = marked.parse(finalContent);
+            contentDiv.innerHTML = finalHtml;
+            highlightCodeIn(contentDiv);
+            botMessageBubble.dataset.textContent = finalContent;
+            
+            const botMessage = { chatId: state.activeChatInCardId, role: 'assistant', content: finalContent, htmlContent: finalHtml };
+            await dbActions.put('messages', botMessage);
+
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                contentDiv.innerHTML += '<p style="color: var(--text-secondary); font-style: italic;">(生成已由用户停止)</p>';
+            } else {
+                contentDiv.innerHTML = `<p style="color: var(--danger-color);">抱歉，请求失败: ${error.message}</p>`;
+            }
+        } finally {
+            currentStreamController = null;
+            updateSendButtonState(false);
+        }
+    }
+    
+    // --- Card Management ---
+    function createWorkspaceCard(cardData, isPinned = false) {
+        const template = DOMElements.workspaceCardTemplate.content.cloneNode(true);
+        const cardEl = template.querySelector('.workspace-card');
+        const contentDiv = cardEl.querySelector('.card-content');
+        contentDiv.innerHTML = cardData.htmlContent;
+        cardEl.dataset.cardId = cardData.id;
+
+        cardEl.querySelector('.card-explore-count').textContent = cardData.chats ? cardData.chats.length : 0;
+        cardEl.querySelector('.card-explore-btn').addEventListener('click', (e) => { e.stopPropagation(); openChatModal(cardData.id); });
+        
+        contentDiv.addEventListener('dblclick', (e) => { e.stopPropagation(); handleEditCard(cardEl); });
+        cardEl.querySelector('.card-edit-btn').addEventListener('click', (e) => { e.stopPropagation(); handleEditCard(cardEl); });
+        cardEl.querySelector('.card-delete-btn').addEventListener('click', (e) => { e.stopPropagation(); handleDeleteCard(cardData.id); });
+        cardEl.querySelector('.card-more-actions-btn').addEventListener('click', (e) => { e.stopPropagation(); showContextMenu(e, 'card-actions', cardData.id); });
+        
+        cardEl.querySelector('.card-edit-save-btn').addEventListener('click', (e) => { e.stopPropagation(); saveCardEdit(cardEl); });
+        cardEl.querySelector('.card-edit-cancel-btn').addEventListener('click', (e) => { e.stopPropagation(); cancelCardEdit(cardEl); });
+
+        // V4.3: Enable text drag for split view
+        contentDiv.addEventListener('dragstart', (e) => {
+            const selection = window.getSelection().toString();
+            if (selection) {
+                e.dataTransfer.setData('text/plain', selection);
+            }
+        });
+
+        return cardEl;
+    }
+    
+    // --- Knowledge Capture & AI Actions ---
+    async function addMessageAsNewCard(messageBubble) {
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace || state.isEditingCard) return;
+
+        const assistantText = messageBubble.dataset.textContent;
+        const assistantHtml = marked.parse(assistantText);
+        const newCardData = { id: `card_${Date.now()}`, textContent: assistantText, htmlContent: assistantHtml, chats: [], tags: [], createdAt: new Date().toISOString() };
+        if (!activeWorkspace.cards) activeWorkspace.cards = [];
+        activeWorkspace.cards.push(newCardData);
+        await dbActions.put('workspaces', activeWorkspace);
+        renderLayout();
+        const button = messageBubble.querySelector('.add-as-new-card-btn');
+        button.style.color = 'var(--accent-secondary)';
+        setTimeout(() => { button.style.color = 'white'; }, 2000);
+    }
+
+    async function handleAddToParentCard(messageBubble) {
+        const messageText = messageBubble.dataset.textContent;
+        if (!messageText) return;
+        const { card, workspace } = findCardAndWorkspace(state.activeCardForChatViewId);
+        if (!card) return;
+        const newTextContent = `${card.textContent || ''}\n\n---\n\n${messageText}`;
+        card.textContent = newTextContent;
+        card.htmlContent = marked.parse(newTextContent);
+        await dbActions.put('workspaces', workspace);
+        renderLayout();
+        const button = messageBubble.querySelector('.add-to-parent-card-btn');
+        button.style.color = 'var(--accent-secondary)';
+        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+        setTimeout(() => {
+            button.style.color = 'white';
+            button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>`;
+        }, 2000);
+    }
+    
+    async function handleCardAIAction(cardId, action) {
+        const { card, workspace } = findCardAndWorkspace(cardId);
+        if (!card) return;
+        const cardElement = document.querySelector(`.workspace-card[data-card-id="${cardId}"]`);
+        if (cardElement) cardElement.classList.add('loading');
+        const actionText = { rewrite: "请用不同的措辞和风格重新表述以下内容，保持核心意思不变", expand: "请在以下内容的基础上进行扩写，增加更多细节、解释或示例", summarize: "请将以下内容缩写，提炼出最核心的要点" };
+        const prompt = `${actionText[action]}:\n\n---\n\n${card.textContent}`;
+        try {
+            const newContent = await callLLM([{ role: 'user', content: prompt }], () => {});
+            card.textContent = newContent;
+            card.htmlContent = marked.parse(newContent);
+            await dbActions.put('workspaces', workspace);
+            renderLayout();
+        } catch (error) { alert(`AI 操作失败: ${error.message}`); } finally {
+            const finalCardElement = document.querySelector(`.workspace-card[data-card-id="${cardId}"]`);
+            if (finalCardElement) finalCardElement.classList.remove('loading');
+        }
+    }
+
+    // --- Helper & Utility Functions ---
+    function findCardAndWorkspace(cardId) {
+        if (!state.activeWorkspaceId) return { card: null, workspace: null };
+        const workspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!workspace || !workspace.cards) return { card: null, workspace: workspace };
+        const card = workspace.cards.find(c => c.id === cardId);
+        if (card) return { card, workspace };
+        return { card: null, workspace: workspace };
+    }
+
+    function addMessageToDOM(role, htmlContent, textContent = '', isHtml = false) {
+        const template = DOMElements.chatMessageTemplate.content.cloneNode(true);
+        const messageDiv = template.querySelector('.chat-message');
+        const bubbleDiv = messageDiv.querySelector('.message-bubble');
+        messageDiv.classList.add(role, 'new-message');
+        bubbleDiv.dataset.textContent = textContent || htmlContent;
+        messageDiv.dataset.role = role;
+        const contentDiv = messageDiv.querySelector('.message-content');
+        contentDiv.innerHTML = isHtml ? htmlContent : `<p>${htmlContent}</p>`;
+        if (role === 'assistant') {
+            bubbleDiv.querySelector('.add-to-parent-card-btn').addEventListener('click', () => handleAddToParentCard(bubbleDiv));
+            bubbleDiv.querySelector('.add-as-new-card-btn').addEventListener('click', () => addMessageAsNewCard(bubbleDiv));
+        } else {
+             bubbleDiv.querySelector('.message-actions')?.remove();
+        }
+        DOMElements.chatContainer.appendChild(template);
+        DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
+        setTimeout(() => messageDiv.classList.remove('new-message'), 500);
+        return bubbleDiv;
+    }
+    
+    async function callLLM(messages, onDelta, signal) {
+        const apiUrl = localStorage.getItem('api_url');
+        const apiKey = localStorage.getItem('api_key');
+        const model = localStorage.getItem('api_model');
+        if (!apiUrl || !apiKey || !model) throw new Error(`请先在设置中配置 API URL, Key 和 Model。`);
+        
+        const response = await fetch(`${apiUrl}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify({ model, messages, stream: true }),
+            signal
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: {message: 'Unknown API error'}}));
+            throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorData.error.message}`);
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = "";
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, {stream: true});
+            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.substring(6);
+                    if (data === '[DONE]') return fullContent;
+                    try {
+                        const json = JSON.parse(data);
+                        const delta = json.choices[0].delta.content;
+                        if (delta) {
+                            fullContent += delta;
+                            onDelta(fullContent);
+                        }
+                    } catch (e) {}
+                }
+            }
+        }
+        return fullContent;
+    }
+
+    function updateSendButtonState(isSending) {
+        const button = DOMElements.exploreSendBtn;
+        if (isSending) {
+            button.disabled = false;
+            button.style.backgroundColor = 'var(--danger-color)';
+            button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="1"></rect></svg>`;
+            button.title = "停止生成";
+        } else {
+            button.style.backgroundColor = '';
+            button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="m22 2-11 11"/></svg>`;
+            button.title = "发送";
+            toggleSendButton();
+        }
+    }
+
+    function adjustTextareaHeight(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+    function toggleSendButton() { if (!currentStreamController) { DOMElements.exploreSendBtn.disabled = (DOMElements.exploreInput.value.trim().length === 0); } }
+    function setTheme(theme) { document.body.classList.toggle('light-theme', theme === 'light'); DOMElements.themeToggleSwitch.checked = theme === 'light'; DOMElements.highlightThemeDark.disabled = theme === 'light'; DOMElements.highlightThemeLight.disabled = theme === 'dark'; state.currentTheme = theme; localStorage.setItem('theme', theme); }
+    function setSidebarCollapsed(collapsed) { DOMElements.leftSidebar.classList.toggle('collapsed', collapsed); state.isSidebarCollapsed = collapsed; localStorage.setItem('sidebarCollapsed', collapsed); }
+    function highlightCodeIn(element) { element.querySelectorAll('pre code, .card-content code').forEach((block) => { hljs.highlightElement(block); }); }
+    function showContextMenu(event, type, id) {
+        hideContextMenus();
+        state.contextMenuType = type;
+        state.contextMenuTargetId = id;
+        let menu;
+        switch (type) {
+            case 'workspace': menu = DOMElements.workspaceContextMenu; break;
+            case 'chat': menu = DOMElements.chatTabContextMenu; break;
+            case 'workspace-settings': menu = DOMElements.workspaceSettingsContextMenu; break;
+            case 'card-actions': menu = DOMElements.cardActionsContextMenu; break;
+            default: return;
+        }
+        menu.style.display = 'block';
+        menu.style.left = `${event.clientX}px`;
+        menu.style.top = `${event.clientY}px`;
+    }
+    function hideContextMenus() { DOMElements.workspaceContextMenu.style.display = 'none'; DOMElements.chatTabContextMenu.style.display = 'none'; DOMElements.workspaceSettingsContextMenu.style.display = 'none'; DOMElements.cardActionsContextMenu.style.display = 'none'; }
+
+    // --- Command Palette Functions ---
+    function registerCommands() {
+        commands = [
+            { id: 'toggle-theme', title: '切换亮色/暗色主题', group: '外观', handler: () => setTheme(state.currentTheme === 'dark' ? 'light' : 'dark') },
+            { id: 'toggle-sidebar', title: '折叠/展开侧边栏', group: '外观', handler: () => setSidebarCollapsed(!state.isSidebarCollapsed) },
+            { id: 'new-workspace', title: '新建工作空间', group: '操作', handler: () => DOMElements.newWorkspaceBtn.click() },
+            { id: 'new-card', title: '新建知识卡片', group: '操作', handler: () => DOMElements.newCardBtn.click(), requiresWorkspace: true },
+            { id: 'open-settings', title: '打开设置', group: '导航', handler: () => DOMElements.settingsBtn.click() },
+        ];
+        state.workspaces.forEach(ws => {
+            commands.push({ id: `switch-ws-${ws.id}`, title: `切换到工作空间: ${ws.name}`, group: '导航', handler: () => switchActiveWorkspace(ws.id) });
+        });
+        fuse = new Fuse(commands, { keys: ['title', 'group'], includeScore: true, threshold: 0.4 });
+    }
+    function openCommandPalette() { registerCommands(); state.isCommandPaletteOpen = true; DOMElements.commandPaletteOverlay.classList.add('visible'); DOMElements.commandPaletteInput.value = ''; DOMElements.commandPaletteInput.focus(); renderCommandPaletteResults(); }
+    function closeCommandPalette() { state.isCommandPaletteOpen = false; DOMElements.commandPaletteOverlay.classList.remove('visible'); }
+    function renderCommandPaletteResults() {
+        const query = DOMElements.commandPaletteInput.value.trim();
+        const filteredCommands = commands.filter(c => !(c.requiresWorkspace && !state.activeWorkspaceId));
+        const results = query ? fuse.search(query).map(r => r.item).filter(item => filteredCommands.includes(item)) : filteredCommands;
+        
+        state.commandPaletteResults = results;
+        state.commandPaletteSelectedIndex = 0;
+        DOMElements.commandPaletteResults.innerHTML = '';
+        if (results.length === 0) { DOMElements.commandPaletteResults.innerHTML = `<li class="command-palette-item">无结果</li>`; return; }
+        results.forEach((cmd, index) => {
+            const li = document.createElement('li');
+            li.className = 'command-palette-item';
+            if (index === state.commandPaletteSelectedIndex) li.classList.add('selected');
+            li.innerHTML = `<span>${cmd.title}</span><span class="command-palette-item-group">${cmd.group}</span>`;
+            li.addEventListener('click', () => executeCommand(cmd));
+            DOMElements.commandPaletteResults.appendChild(li);
+        });
+    }
+    function executeCommand(command) { if (command && command.handler) command.handler(); closeCommandPalette(); }
+    function updateCommandPaletteSelection() {
+        const items = DOMElements.commandPaletteResults.querySelectorAll('.command-palette-item');
+        items.forEach((item, index) => item.classList.toggle('selected', index === state.commandPaletteSelectedIndex));
+        items[state.commandPaletteSelectedIndex]?.scrollIntoView({ block: 'nearest' });
+    }
+
+    // --- Selection Mode Functions ---
+    function toggleSelectionMode(forceState) {
+        state.isSelectionModeActive = typeof forceState === 'boolean' ? forceState : !state.isSelectionModeActive;
+        DOMElements.chatContainer.classList.toggle('selection-mode-active', state.isSelectionModeActive);
+        DOMElements.selectionModeBtn.classList.toggle('active', state.isSelectionModeActive);
+        updateSelectionActionsVisibility();
+        if (!state.isSelectionModeActive) {
+            DOMElements.chatContainer.querySelectorAll('.message-selector-checkbox').forEach(cb => cb.checked = false);
+            DOMElements.selectionModeActions.classList.remove('visible');
+        }
+    }
+    function updateSelectionActionsVisibility() {
+        if (state.isSelectionModeActive) {
+            const anyChecked = DOMElements.chatContainer.querySelector('.message-selector-checkbox:checked');
+            DOMElements.selectionModeActions.classList.toggle('visible', !!anyChecked);
+        }
+    }
+
+    // --- V4.3: Split View Functions ---
+    function createSplitViewPane(cardId) {
+        const { card } = findCardAndWorkspace(cardId);
+        if (!card) return document.createElement('div');
+
+        const pane = document.createElement('div');
+        pane.className = 'split-view-pane';
+        pane.dataset.cardId = cardId;
+
+        const header = document.createElement('div');
+        header.className = 'pinned-card-header';
+        
+        const title = document.createElement('span');
+        title.className = 'pinned-card-title';
+        title.textContent = (card.textContent.split('\n')[0].trim() || '无标题卡片').substring(0, 30);
+        title.title = card.textContent.split('\n')[0].trim() || '无标题卡片';
+        
+        const unpinBtn = document.createElement('button');
+        unpinBtn.className = 'icon-button';
+        unpinBtn.title = '解钉';
+        unpinBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+        unpinBtn.addEventListener('click', () => handleUnpinCard(cardId));
+
+        header.appendChild(title);
+        header.appendChild(unpinBtn);
+
+        const content = document.createElement('div');
+        content.className = 'pinned-card-content';
+        const cardElement = createWorkspaceCard(card, true);
+        content.appendChild(cardElement);
+
+        pane.appendChild(header);
+        pane.appendChild(content);
+
+        return pane;
+    }
+
+    function handlePinCard(cardId) {
+        if (state.pinnedCardIds.includes(cardId)) return;
+        if (state.pinnedCardIds.length >= 2) {
+            alert('最多只能钉住两张卡片。');
+            return;
+        }
+        state.pinnedCardIds.push(cardId);
+        renderLayout();
+    }
+
+    function handleUnpinCard(cardId) {
+        state.pinnedCardIds = state.pinnedCardIds.filter(id => id !== cardId);
+        renderLayout();
+    }
+
+    function initResize(e) {
+        const resizer = e.target;
+        const prevPane = resizer.previousElementSibling;
+        const nextPane = resizer.nextElementSibling;
+        if (!prevPane || !nextPane) return;
+
+        const startX = e.clientX;
+        const startWidth = prevPane.offsetWidth;
+
+        function doDrag(e) {
+            const newWidth = startWidth + (e.clientX - startX);
+            const totalWidth = prevPane.offsetWidth + nextPane.offsetWidth;
+            const newFlex = newWidth / totalWidth;
+            
+            prevPane.style.flex = `${newFlex}`;
+            nextPane.style.flex = `${1 - newFlex}`;
+        }
+
+        function stopDrag() {
+            document.removeEventListener('mousemove', doDrag);
+            document.removeEventListener('mouseup', stopDrag);
+        }
+
+        document.addEventListener('mousemove', doDrag);
+        document.addEventListener('mouseup', stopDrag);
+    }
+
+    // --- V4.3: Whiteboard View Functions ---
+    function switchView(view) {
+        if (state.activeView === view) return;
+        state.activeView = view;
+        DOMElements.viewSwitchGridBtn.classList.toggle('active', view === 'grid');
+        DOMElements.viewSwitchWhiteboardBtn.classList.toggle('active', view === 'whiteboard');
+        renderLayout();
+    }
+
+    function renderWhiteboardView(container) {
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace) return;
+        
+        container.innerHTML = ''; // Clear previous content
+        const canvas = document.createElement('div');
+        canvas.className = 'whiteboard-canvas';
+        container.appendChild(canvas);
+
+        if (!activeWorkspace.whiteboardLayout) {
+            activeWorkspace.whiteboardLayout = { nodes: [] };
+        }
+
+        activeWorkspace.cards.forEach(cardData => {
+            let nodeLayout = activeWorkspace.whiteboardLayout.nodes.find(n => n.cardId === cardData.id);
+            if (!nodeLayout) {
+                nodeLayout = { cardId: cardData.id, x: Math.random() * 500, y: Math.random() * 300 };
+                activeWorkspace.whiteboardLayout.nodes.push(nodeLayout);
+            }
+
+            const nodeEl = document.createElement('div');
+            nodeEl.className = 'whiteboard-node';
+            nodeEl.dataset.cardId = cardData.id;
+            nodeEl.style.left = `${nodeLayout.x}px`;
+            nodeEl.style.top = `${nodeLayout.y}px`;
+            
+            const header = document.createElement('div');
+            header.className = 'whiteboard-node-header';
+            header.textContent = cardData.textContent.split('\n')[0].trim() || '无标题卡片';
+            
+            const content = document.createElement('div');
+            content.className = 'whiteboard-node-content';
+            content.textContent = cardData.textContent.substring(0, 150) + '...';
+
+            nodeEl.appendChild(header);
+            nodeEl.appendChild(content);
+            nodeEl.addEventListener('mousedown', initNodeDrag);
+            nodeEl.addEventListener('dblclick', () => openChatModal(cardData.id));
+            canvas.appendChild(nodeEl);
+        });
+        dbActions.put('workspaces', activeWorkspace); // Save potentially new node positions
+    }
+
+    function initNodeDrag(e) {
+        e.preventDefault();
+        const node = e.currentTarget;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startLeft = node.offsetLeft;
+        const startTop = node.offsetTop;
+
+        function doDrag(e) {
+            node.style.left = `${startLeft + (e.clientX - startX)}px`;
+            node.style.top = `${startTop + (e.clientY - startY)}px`;
+        }
+
+        function stopDrag(e) {
+            document.removeEventListener('mousemove', doDrag);
+            document.removeEventListener('mouseup', stopDrag);
+            
+            const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+            const nodeLayout = activeWorkspace.whiteboardLayout.nodes.find(n => n.cardId === node.dataset.cardId);
+            if (nodeLayout) {
+                nodeLayout.x = node.offsetLeft;
+                nodeLayout.y = node.offsetTop;
+                dbActions.put('workspaces', activeWorkspace);
+            }
+        }
+
+        document.addEventListener('mousemove', doDrag);
+        document.addEventListener('mouseup', stopDrag);
+    }
+
+    // --- V4.3: Action Plan Functions ---
+    async function handleTaskToggle(e) {
+        const checkbox = e.target;
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace) return;
+
+        const lines = activeWorkspace.goal.split('\n');
+        let taskCounter = -1;
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim().startsWith('- [')) {
+                taskCounter++;
+                if (taskCounter == checkbox.dataset.lineIndex) {
+                    lines[i] = lines[i].includes('[x]') 
+                        ? lines[i].replace('[x]', '[ ]') 
+                        : lines[i].replace('[ ]', '[x]');
+                    break;
+                }
+            }
+        }
+        activeWorkspace.goal = lines.join('\n');
+        await dbActions.put('workspaces', activeWorkspace);
+        renderActionPlan();
+    }
+
+    async function handleAiGeneratePlan() {
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace) return;
+
+        const goal = prompt("请输入您想通过 AI 规划的最终目标：", "完成Q4季度销售复盘报告");
+        if (!goal) return;
+
+        alert('正在为您生成行动计划，请稍候...');
+        
+        const cardTitles = activeWorkspace.cards.map(c => `- ${c.textContent.split('\n')[0]}`).join('\n');
+        const prompt = `Based on the main goal "${goal}" and the existing information cards listed below, please generate a concise, actionable step-by-step plan in GitHub-flavored markdown task list format.
+
+Existing card titles:
+${cardTitles}
+
+Please provide only the markdown task list.`;
+
+        try {
+            const plan = await callLLM([{ role: 'user', content: prompt }], () => {});
+            activeWorkspace.goal = plan;
+            await dbActions.put('workspaces', activeWorkspace);
+            renderActionPlan();
+        } catch (error) {
+            alert(`AI 计划生成失败: ${error.message}`);
+        }
+    }
+
+    // --- V4.3: Outline Synthesis Functions ---
+    function openSynthesisModal() {
+        state.synthesisOutline = [{ id: `chap_${Date.now()}`, title: '引言', cardIds: [] }];
+        DOMElements.synthesisModal.classList.add('visible');
+        renderSynthesisModal();
+    }
+    
+    function closeSynthesisModal() {
+        DOMElements.synthesisModal.classList.remove('visible');
+        DOMElements.synthesisPreviewArea.innerHTML = '<p style="color: var(--text-secondary);">报告生成后将在此处预览...</p>';
+    }
+
+    function renderSynthesisModal() {
+        renderSynthesisOutline();
+        renderSynthesisCardList();
+    }
+
+    function renderSynthesisOutline() {
+        DOMElements.synthesisOutlineList.innerHTML = '';
+        state.synthesisOutline.forEach(item => {
+            const template = DOMElements.synthesisOutlineItemTemplate.content.cloneNode(true);
+            const li = template.querySelector('.synthesis-outline-item');
+            li.dataset.id = item.id;
+            
+            const input = li.querySelector('.outline-item-input');
+            input.value = item.title;
+            input.addEventListener('change', (e) => {
+                item.title = e.target.value;
+            });
+
+            li.querySelector('.outline-item-delete-btn').addEventListener('click', () => {
+                state.synthesisOutline = state.synthesisOutline.filter(i => i.id !== item.id);
+                renderSynthesisOutline();
+            });
+
+            const cardsContainer = li.querySelector('.outline-item-cards');
+            item.cardIds.forEach(cardId => {
+                const { card } = findCardAndWorkspace(cardId);
+                if (card) {
+                    const pill = document.createElement('span');
+                    pill.className = 'outline-card-pill';
+                    pill.textContent = (card.textContent.split('\n')[0].trim() || '无标题卡片').substring(0, 20);
+                    
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'pill-remove-btn';
+                    removeBtn.innerHTML = '&times;';
+                    removeBtn.onclick = () => {
+                        item.cardIds = item.cardIds.filter(id => id !== cardId);
+                        renderSynthesisOutline();
+                    };
+                    pill.appendChild(removeBtn);
+                    cardsContainer.appendChild(pill);
+                }
+            });
+
+            li.addEventListener('dragover', e => { e.preventDefault(); li.classList.add('drop-target'); });
+            li.addEventListener('dragleave', () => li.classList.remove('drop-target'));
+            li.addEventListener('drop', e => {
+                e.preventDefault();
+                li.classList.remove('drop-target');
+                const cardId = e.dataTransfer.getData('text/plain');
+                if (cardId && !item.cardIds.includes(cardId)) {
+                    item.cardIds.push(cardId);
+                    renderSynthesisOutline();
+                }
+            });
+
+            DOMElements.synthesisOutlineList.appendChild(li);
+        });
+    }
+
+    function renderSynthesisCardList() {
+        DOMElements.synthesisCardList.innerHTML = '';
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace) return;
+
+        activeWorkspace.cards.forEach(card => {
+            const template = DOMElements.synthesisCardItemTemplate.content.cloneNode(true);
+            const div = template.querySelector('.synthesis-card-item');
+            div.dataset.cardId = card.id;
+            div.textContent = card.textContent.split('\n')[0].trim() || '无标题卡片';
+            
+            div.addEventListener('dragstart', e => {
+                e.dataTransfer.setData('text/plain', card.id);
+            });
+            DOMElements.synthesisCardList.appendChild(div);
+        });
+    }
+
+    async function handleSynthesisGenerate() {
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace) return;
+
+        DOMElements.synthesisPreviewArea.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
+
+        let prompt = `请根据以下严格定义的大纲和参考材料，撰写一份完整、连贯的报告。请确保报告的结构与大纲完全一致，并充分利用每个章节指定的参考材料。\n\n`;
+        if (activeWorkspace.goal) {
+            prompt += `**报告主题/目标:** ${activeWorkspace.goal}\n\n---\n\n**大纲与参考材料:**\n\n`;
+        }
+
+        for (const item of state.synthesisOutline) {
+            prompt += `# ${item.title}\n`;
+            if (item.cardIds.length > 0) {
+                prompt += `请参考以下材料撰写本章内容:\n`;
+                for (const cardId of item.cardIds) {
+                    const { card } = findCardAndWorkspace(cardId);
+                    if (card) {
+                        prompt += `- **材料:** ${card.textContent}\n`;
+                    }
+                }
+            } else {
+                prompt += `(本章无指定参考材料，请根据主题自行发挥)\n`;
+            }
+            prompt += `\n---\n\n`;
+        }
+        
+        try {
+            const reportContent = await callLLM([{ role: 'user', content: prompt }], (streamed) => {
+                DOMElements.synthesisPreviewArea.innerHTML = marked.parse(streamed);
+            });
+            
+            const finalHtml = marked.parse(reportContent);
+            DOMElements.synthesisPreviewArea.innerHTML = finalHtml;
+            highlightCodeIn(DOMElements.synthesisPreviewArea);
+
+            const actions = document.createElement('div');
+            actions.style.marginTop = '1rem';
+            actions.innerHTML = `
+                <button class="modal-button secondary" id="copy-report-btn">复制内容</button>
+                <button class="modal-button primary" id="create-report-card-btn">创建为新卡片</button>
+            `;
+            DOMElements.synthesisPreviewArea.appendChild(actions);
+            
+            document.getElementById('copy-report-btn').onclick = () => {
+                navigator.clipboard.writeText(reportContent);
+                alert('报告内容已复制！');
+            };
+            document.getElementById('create-report-card-btn').onclick = async () => {
+                const newCardData = {
+                    id: `card_report_${Date.now()}`,
+                    textContent: `# ${activeWorkspace.name} - 综合报告\n\n${reportContent}`,
+                    htmlContent: marked.parse(`# ${activeWorkspace.name} - 综合报告\n\n${reportContent}`),
+                    chats: [], tags: ['Report'], createdAt: new Date().toISOString()
+                };
+                activeWorkspace.cards.push(newCardData);
+                await dbActions.put('workspaces', activeWorkspace);
+                closeSynthesisModal();
+                renderLayout();
+                alert('报告已作为新卡片添加！');
+            };
+
+        } catch (error) {
+            DOMElements.synthesisPreviewArea.innerHTML = `<p style="color: var(--danger-color);">报告生成失败: ${error.message}</p>`;
+        }
+    }
+
+
+    // --- Event Listeners ---
+    DOMElements.sidebarToggleBtn.addEventListener('click', () => setSidebarCollapsed(!state.isSidebarCollapsed));
+    DOMElements.themeToggleSwitch.addEventListener('change', (e) => setTheme(e.target.checked ? 'light' : 'dark'));
+    DOMElements.newWorkspaceBtn.addEventListener('click', async () => { const name = prompt('请输入新的工作空间名称：', `工作空间 ${state.workspaces.length + 1}`); if (name) await createNewWorkspace(name); });
+    DOMElements.workspaceSettingsBtn.addEventListener('click', (e) => { e.stopPropagation(); showContextMenu(e, 'workspace-settings', state.activeWorkspaceId); });
+    DOMElements.actionPlanDisplay.addEventListener('click', (e) => {
+        if (e.target.type === 'checkbox') return; // Let checkbox handler work
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace) return;
+        const newPlan = prompt('编辑行动计划 (支持 Markdown):', activeWorkspace.goal || '');
+        if (newPlan !== null) {
+            activeWorkspace.goal = newPlan.trim();
+            dbActions.put('workspaces', activeWorkspace).then(renderActionPlan);
+        }
+    });
+    DOMElements.newCardBtn.addEventListener('click', async () => {
+        if (state.isEditingCard) return;
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace) return;
+        if (!activeWorkspace.cards) activeWorkspace.cards = [];
+        const newCardData = { id: `card_${Date.now()}`, textContent: '新卡片', htmlContent: '<p>新卡片</p>', chats: [], tags: [], createdAt: new Date().toISOString() };
+        activeWorkspace.cards.push(newCardData);
+        await dbActions.put('workspaces', activeWorkspace);
+        renderLayout();
+        const newCardEl = document.querySelector(`#card-view-content-area [data-card-id="${newCardData.id}"]`);
+        if (newCardEl) handleEditCard(newCardEl);
+    });
+    DOMElements.exploreForm.addEventListener('submit', handleExploreChat);
+    DOMElements.exploreInput.addEventListener('input', () => { adjustTextareaHeight(DOMElements.exploreInput); toggleSendButton(); });
+    DOMElements.exploreInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); DOMElements.exploreForm.dispatchEvent(new Event('submit', { cancelable: true })); } });
+    DOMElements.chatModalCloseBtn.addEventListener('click', closeChatModal);
+    DOMElements.settingsBtn.addEventListener('click', () => { DOMElements.apiUrlInput.value = localStorage.getItem('api_url') || ''; DOMElements.apiKeyInput.value = localStorage.getItem('api_key') || ''; DOMElements.apiModelInput.value = localStorage.getItem('api_model') || ''; DOMElements.settingsModal.classList.add('visible'); });
+    DOMElements.settingsCancelBtn.addEventListener('click', () => DOMElements.settingsModal.classList.remove('visible'));
+    DOMElements.settingsSaveBtn.addEventListener('click', () => { localStorage.setItem('api_url', DOMElements.apiUrlInput.value.trim()); localStorage.setItem('api_key', DOMElements.apiKeyInput.value.trim()); localStorage.setItem('api_model', DOMElements.apiModelInput.value.trim()); DOMElements.settingsModal.classList.remove('visible'); alert('设置已保存！'); });
+    DOMElements.privacyModalCloseBtn.addEventListener('click', () => { DOMElements.privacyModal.classList.remove('visible'); localStorage.setItem('privacyNoticeShown_v4.3', 'true'); });
+    DOMElements.importFileInput.addEventListener('change', (e) => { handleImport(e.target.files[0]); e.target.value = ''; });
+    document.addEventListener('click', (e) => { if (!e.target.closest('.context-menu')) hideContextMenus(); });
+    
+    // V4.3 Event Listeners
+    DOMElements.viewSwitchGridBtn.addEventListener('click', () => switchView('grid'));
+    DOMElements.viewSwitchWhiteboardBtn.addEventListener('click', () => switchView('whiteboard'));
+    DOMElements.synthesisCancelBtn.addEventListener('click', closeSynthesisModal);
+    DOMElements.addOutlineItemBtn.addEventListener('click', () => {
+        state.synthesisOutline.push({ id: `chap_${Date.now()}`, title: '新章节', cardIds: [] });
+        renderSynthesisOutline();
+    });
+    DOMElements.synthesisGenerateBtn.addEventListener('click', handleSynthesisGenerate);
+
+    // Context Menu Handlers
+    [DOMElements.workspaceContextMenu, DOMElements.chatTabContextMenu, DOMElements.workspaceSettingsContextMenu, DOMElements.cardActionsContextMenu].forEach(menu => {
+         menu.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const actionTarget = e.target.closest('[data-action]');
+            if (!actionTarget) return;
+            const action = actionTarget.dataset.action;
+            
+            hideContextMenus();
+            const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+
+            switch(action) {
+                case 'rename':
+                    if (state.contextMenuType === 'workspace') {
+                        const workspace = state.workspaces.find(ws => ws.id === state.contextMenuTargetId);
+                        if (workspace) {
+                            const newName = prompt('输入新的工作空间名称:', workspace.name);
+                            if (newName && newName.trim() !== workspace.name) {
+                                workspace.name = newName.trim();
+                                await dbActions.put('workspaces', workspace);
+                                renderWorkspaceList();
+                                if (state.activeWorkspaceId === workspace.id) renderLayout();
+                            }
+                        }
+                    } else if (state.contextMenuType === 'chat') {
+                        const { card } = findCardAndWorkspace(state.activeCardForChatViewId);
+                        if (card) {
+                            const chat = card.chats.find(c => c.id === state.contextMenuTargetId);
+                            if (chat) {
+                                const newName = prompt('输入新的探索名称:', chat.name);
+                                if (newName && newName.trim() !== chat.name) {
+                                    chat.name = newName.trim();
+                                    await dbActions.put('workspaces', activeWorkspace);
+                                    renderChatTabs();
+                                }
+                            }
+                        }
+                    }
+                    break;
+                case 'delete':
+                    if (state.contextMenuType === 'workspace') {
+                        const wsToDelete = state.workspaces.find(ws => ws.id === state.contextMenuTargetId);
+                        if (wsToDelete && confirm(`确定要删除工作空间"${wsToDelete.name}"及其所有内容吗？此操作不可撤销。`)) {
+                            for (const card of wsToDelete.cards || []) {
+                                for (const chat of card.chats || []) {
+                                    await dbActions.deleteMessagesByChat(chat.id);
+                                }
+                            }
+                            await dbActions.delete('workspaces', state.contextMenuTargetId);
+                            state.workspaces = state.workspaces.filter(ws => ws.id !== state.contextMenuTargetId);
+                            if (state.activeWorkspaceId === state.contextMenuTargetId) {
+                                if (state.workspaces.length > 0) {
+                                    await switchActiveWorkspace(state.workspaces[0].id);
+                                } else {
+                                    await createNewWorkspace('默认工作空间');
+                                }
+                            }
+                            renderWorkspaceList();
+                        }
+                    } else if (state.contextMenuType === 'chat') {
+                        const { card, workspace } = findCardAndWorkspace(state.activeCardForChatViewId);
+                        if (card) {
+                            const chat = card.chats.find(c => c.id === state.contextMenuTargetId);
+                            if (chat && confirm(`确定要删除探索"${chat.name}"吗？`)) {
+                                await dbActions.deleteMessagesByChat(chat.id);
+                                card.chats = card.chats.filter(c => c.id !== chat.id);
+                                if (state.activeChatInCardId === chat.id) {
+                                    state.activeChatInCardId = card.chats.length > 0 ? card.chats[0].id : null;
+                                    card.activeChatId = state.activeChatInCardId;
+                                }
+                                await dbActions.put('workspaces', workspace);
+                                renderChatTabs();
+                                await renderExploreMessages();
+                            }
+                        }
+                    }
+                    break;
+                case 'rename-workspace':
+                    const newName = prompt('输入新的工作空间名称:', activeWorkspace.name);
+                    if (newName && newName.trim() !== activeWorkspace.name) {
+                        activeWorkspace.name = newName.trim();
+                        await dbActions.put('workspaces', activeWorkspace);
+                        renderWorkspaceList();
+                        renderLayout();
+                    }
+                    break;
+                case 'set-action-plan': DOMElements.actionPlanDisplay.click(); break;
+                case 'ai-generate-plan': handleAiGeneratePlan(); break;
+                case 'synthesize-report': openSynthesisModal(); break;
+                case 'export-zip': exportWorkspaceToZip(activeWorkspace.id); break;
+                case 'export-md': exportWorkspaceToMarkdown(activeWorkspace.id); break;
+                case 'pin-to-view': handlePinCard(state.contextMenuTargetId); break;
+                case 'rewrite': case 'expand': case 'summarize':
+                    handleCardAIAction(state.contextMenuTargetId, action);
+                    break;
+            }
+         });
+    });
+    
+    // Drag & Drop Listeners for Grid View
+    DOMElements.mainContentContainer.addEventListener('dragstart', (e) => { 
+        if (e.target.classList.contains('workspace-card') && e.target.closest('#card-view-content-area')) { 
+            draggedItem = e.target; 
+            setTimeout(() => e.target.classList.add('dragging'), 0); 
+        } 
+    });
+    DOMElements.mainContentContainer.addEventListener('dragend', async (e) => { 
+        if (draggedItem) { 
+            draggedItem.classList.remove('dragging'); 
+            const cardId = draggedItem.dataset.cardId; 
+            const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId); 
+            const cardData = activeWorkspace.cards.find(c => c.id === cardId); 
+            if (!cardData) return; 
+            const cardElements = [...document.querySelectorAll('#card-view-content-area .workspace-card')]; 
+            const newIndex = cardElements.indexOf(draggedItem); 
+            activeWorkspace.cards = activeWorkspace.cards.filter(c => c.id !== cardId); 
+            activeWorkspace.cards.splice(newIndex, 0, cardData); 
+            await dbActions.put('workspaces', activeWorkspace); 
+            renderLayout(); 
+            draggedItem = null; 
+        } 
+    });
+    DOMElements.mainContentContainer.addEventListener('dragover', (e) => { 
+        if (e.target.closest('#card-view-content-area')) {
+            e.preventDefault(); 
+            const afterElement = getDragAfterElement(document.getElementById('card-view-content-area'), e.clientX); 
+            const draggable = document.querySelector('.dragging'); 
+            if (draggable && afterElement !== draggable) { 
+                document.getElementById('card-view-content-area').insertBefore(draggable, afterElement); 
+            }
+        }
+    });
+    function getDragAfterElement(container, x) { const draggableElements = [...container.querySelectorAll('.workspace-card:not(.dragging)')]; return draggableElements.reduce((closest, child) => { const box = child.getBoundingClientRect(); const offset = x - box.left - box.width / 2; if (offset < 0 && offset > closest.offset) { return { offset: offset, element: child }; } else { return closest; } }, { offset: Number.NEGATIVE_INFINITY }).element; }
+    
+    // Keyboard & Command Palette Listeners
+    document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); state.isCommandPaletteOpen ? closeCommandPalette() : openCommandPalette(); }
+        if (state.isCommandPaletteOpen) {
+            if (e.key === 'Escape') closeCommandPalette();
+            else if (e.key === 'ArrowDown') { e.preventDefault(); state.commandPaletteSelectedIndex = (state.commandPaletteSelectedIndex + 1) % state.commandPaletteResults.length; updateCommandPaletteSelection(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); state.commandPaletteSelectedIndex = (state.commandPaletteSelectedIndex - 1 + state.commandPaletteResults.length) % state.commandPaletteResults.length; updateCommandPaletteSelection(); }
+            else if (e.key === 'Enter') { e.preventDefault(); const selectedCommand = state.commandPaletteResults[state.commandPaletteSelectedIndex]; executeCommand(selectedCommand); }
+        } else if (e.key === 'Escape') {
+            if (DOMElements.chatModalOverlay.classList.contains('visible')) closeChatModal();
+            else if (DOMElements.synthesisModal.classList.contains('visible')) closeSynthesisModal();
+        }
+    });
+    DOMElements.commandPaletteInput.addEventListener('input', renderCommandPaletteResults);
+    DOMElements.commandPaletteOverlay.addEventListener('click', (e) => { if (e.target === DOMElements.commandPaletteOverlay) closeCommandPalette(); });
+
+    // Selection Mode Listeners
+    DOMElements.selectionModeBtn.addEventListener('click', () => toggleSelectionMode());
+    DOMElements.cancelSelectionModeBtn.addEventListener('click', () => toggleSelectionMode(false));
+    DOMElements.addSelectedToWorkspaceBtn.addEventListener('click', async () => {
+        const selectedMessages = Array.from(DOMElements.chatContainer.querySelectorAll('.message-selector-checkbox:checked')).map(cb => cb.closest('.chat-message'));
+        if (selectedMessages.length === 0) { alert('请至少选择一条消息。'); return; }
+        const combinedText = selectedMessages.map(msg => `**${msg.dataset.role === 'user' ? 'User' : 'Assistant'}:**\n${msg.querySelector('.message-bubble').dataset.textContent}`).join('\n\n---\n\n');
+        const newCardData = { id: `card_${Date.now()}`, textContent: combinedText, htmlContent: marked.parse(combinedText), chats: [], tags: [], createdAt: new Date().toISOString() };
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (activeWorkspace) {
+            if (!activeWorkspace.cards) activeWorkspace.cards = [];
+            activeWorkspace.cards.push(newCardData);
+            await dbActions.put('workspaces', activeWorkspace);
+            renderLayout();
+            alert('已将选中消息创建为新卡片。');
+        }
+        toggleSelectionMode(false);
+    });
+    DOMElements.chatContainer.addEventListener('change', (e) => { if (e.target.classList.contains('message-selector-checkbox')) updateSelectionActionsVisibility(); });
+
+    // --- Final Implementation of Missing/Buggy Functions ---
+    function handleEditCard(cardElement) {
+        if (state.isEditingCard) return;
+        state.isEditingCard = true;
+        
+        const { card } = findCardAndWorkspace(cardElement.dataset.cardId);
+        if (!card) return;
+
+        const contentDiv = cardElement.querySelector('.card-content');
+        const editorDiv = cardElement.querySelector('.card-editor');
+        const textarea = cardElement.querySelector('.workspace-card-textarea');
+
+        textarea.value = card.textContent;
+        contentDiv.style.display = 'none';
+        editorDiv.style.display = 'block';
+        textarea.focus();
+        adjustTextareaHeight(textarea);
+
+        // V4.3: Add drop listener for text
+        textarea.addEventListener('dragover', e => e.preventDefault());
+        textarea.addEventListener('drop', e => {
+            e.preventDefault();
+            const text = e.dataTransfer.getData('text/plain');
+            if (text) {
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
+                textarea.selectionStart = textarea.selectionEnd = start + text.length;
+            }
+        });
+    }
+
+    function cancelCardEdit(cardElement) {
+        const contentDiv = cardElement.querySelector('.card-content');
+        const editorDiv = cardElement.querySelector('.card-editor');
+        editorDiv.style.display = 'none';
+        contentDiv.style.display = 'block';
+        state.isEditingCard = false;
+    }
+
+    async function saveCardEdit(cardElement) {
+        const cardId = cardElement.dataset.cardId;
+        const { card, workspace } = findCardAndWorkspace(cardId);
+        if (!card) return;
+
+        const textarea = cardElement.querySelector('.workspace-card-textarea');
+        const newTextContent = textarea.value;
+        card.textContent = newTextContent;
+        card.htmlContent = marked.parse(newTextContent);
+        await dbActions.put('workspaces', workspace);
+
+        const contentDiv = cardElement.querySelector('.card-content');
+        contentDiv.innerHTML = card.htmlContent;
+        highlightCodeIn(contentDiv);
+        cancelCardEdit(cardElement);
+        
+        // V4.3: If it's a pinned card, update the title
+        const pinnedHeaderTitle = document.querySelector(`.split-view-pane[data-card-id="${cardId}"] .pinned-card-title`);
+        if (pinnedHeaderTitle) {
+            pinnedHeaderTitle.textContent = (newTextContent.split('\n')[0].trim() || '无标题卡片').substring(0, 30);
+        }
+    }
+
+    async function handleDeleteCard(cardId) {
+        const { card, workspace } = findCardAndWorkspace(cardId);
+        if (card && confirm("确定要删除此卡片及其所有探索记录吗？")) {
+            for (const chat of card.chats || []) {
+                await dbActions.deleteMessagesByChat(chat.id);
+            }
+            workspace.cards = workspace.cards.filter(c => c.id !== cardId);
+            // V4.3: Also remove from pinned cards and whiteboard
+            state.pinnedCardIds = state.pinnedCardIds.filter(id => id !== cardId);
+            if (workspace.whiteboardLayout && workspace.whiteboardLayout.nodes) {
+                workspace.whiteboardLayout.nodes = workspace.whiteboardLayout.nodes.filter(n => n.cardId !== cardId);
+            }
+            await dbActions.put('workspaces', workspace);
+            renderLayout();
+        }
+    }
+    
+    async function exportWorkspaceToZip(workspaceId) {
+        const workspace = state.workspaces.find(ws => ws.id === workspaceId);
+        if (!workspace) return;
+        try {
+            const zip = new JSZip();
+            const metaData = { ...workspace, cards: workspace.cards.map(c => ({...c, chats: c.chats.map(ch => ch.id)})) };
+            zip.file("workspace.json", JSON.stringify(metaData, null, 2));
+            
+            const chatsFolder = zip.folder("chats");
+            for (const card of workspace.cards) {
+                for (const chat of card.chats) {
+                    const messages = await dbActions.getMessagesByChat(chat.id);
+                    if (messages.length > 0) {
+                        chatsFolder.file(`${chat.id}.json`, JSON.stringify(messages, null, 2));
+                    }
+                }
+            }
+            const content = await zip.generateAsync({type:"blob"});
+            saveAs(content, `${workspace.name.replace(/[^a-z0-9]/gi, '_')}.zip`);
+        } catch (error) { console.error("导出失败:", error); alert(`导出失败: ${error.message}`); }
+    }
+    
+    function exportWorkspaceToMarkdown(workspaceId) {
+        const workspace = state.workspaces.find(ws => ws.id === workspaceId);
+        if (!workspace) return;
+        let mdContent = `# ${workspace.name}\n\n`;
+        if (workspace.goal) mdContent += `## 行动计划\n\n${workspace.goal}\n\n---\n\n`;
+        
+        workspace.cards.forEach(card => {
+            const title = card.textContent.split('\n')[0].trim() || '无标题卡片';
+            mdContent += `## ${title.replace(/^#+\s*/, '')}\n\n${card.textContent}\n\n---\n\n`;
+        });
+        const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
+        saveAs(blob, `${workspace.name.replace(/[^a-z0-9]/gi, '_')}.md`);
+    }
+
+    async function handleImport(file) {
+        if (!file) return;
+        const zip = new JSZip();
+        try {
+            const content = await zip.loadAsync(file);
+            const workspaceFile = content.file("workspace.json");
+            if (!workspaceFile) throw new Error("压缩包中未找到 workspace.json");
+
+            const workspaceData = JSON.parse(await workspaceFile.async("string"));
+            
+            const newWorkspace = { ...workspaceData, id: `ws_${Date.now()}`, name: `${workspaceData.name} (导入)` };
+            
+            if (newWorkspace.groups) {
+                newWorkspace.cards = newWorkspace.groups.flatMap(group => group.cards || []);
+                delete newWorkspace.groups;
+            }
+            if (!newWorkspace.whiteboardLayout) {
+                newWorkspace.whiteboardLayout = { nodes: [], edges: [], notes: [] };
+            }
+
+            for (const card of newWorkspace.cards) {
+                const chatIds = Array.isArray(card.chats) ? card.chats.map(c => typeof c === 'string' ? c : c.id) : [];
+                card.chats = []; 
+                for (const chatId of chatIds) {
+                    const chatFile = content.file(`chats/${chatId}.json`);
+                    if (chatFile) {
+                        const messages = JSON.parse(await chatFile.async("string"));
+                        for (const msg of messages) {
+                            await dbActions.put('messages', msg);
+                        }
+                        card.chats.push({id: chatId, name: '导入的探索'});
+                    }
+                }
+            }
+
+            await dbActions.put('workspaces', newWorkspace);
+            state.workspaces.push(newWorkspace);
+            renderWorkspaceList();
+            await switchActiveWorkspace(newWorkspace.id);
+            alert('工作空间导入成功！');
+
+        } catch (error) {
+            console.error("导入失败:", error);
+            alert(`导入失败: ${error.message}`);
+        }
+    }
+
+    initializeApp();
+});
+</script>
+
+</body>
+</html>
