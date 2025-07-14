@@ -1,5 +1,6 @@
 # CortexSpace
 
+<img width="2460" height="1281" alt="image" src="https://github.com/user-attachments/assets/a593bcd6-afad-4c4a-98d4-47ecbc0b04a5" />
 
 [English Introduction](#-english-introduction) | [简体中文介绍](#-简体中文介绍)
 
