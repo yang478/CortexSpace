@@ -384,7 +384,10 @@
             </div>
             <div class="synthesis-body">
                 <div class="synthesis-outline-pane">
-                    <h4 class="synthesis-pane-title">1. 构建报告大纲</h4>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h4 class="synthesis-pane-title" style="margin-bottom: 0;">1. 构建报告大纲</h4>
+                        <button id="ai-generate-outline-btn" class="modal-button secondary" style="font-size: 0.8rem; padding: 4px 8px;">AI 辅助生成</button>
+                    </div>
                     <ul id="synthesis-outline-list">
                         <!-- Outline items will be generated here -->
                     </ul>
@@ -606,6 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
         synthesisGenerateBtn: document.getElementById('synthesis-generate-btn'),
         synthesisOutlineList: document.getElementById('synthesis-outline-list'),
         addOutlineItemBtn: document.getElementById('add-outline-item-btn'),
+        aiGenerateOutlineBtn: document.getElementById('ai-generate-outline-btn'),
         synthesisCardList: document.getElementById('synthesis-card-list'),
         synthesisPreviewArea: document.getElementById('synthesis-preview-area'),
         // Command Palette
@@ -815,29 +819,35 @@ document.addEventListener('DOMContentLoaded', () => {
         DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
     }
 
-    function renderActionPlan() { 
-        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId); 
-        if (!activeWorkspace) return; 
-        const plan = activeWorkspace.goal || ''; 
+    function renderActionPlan() {
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace) return;
+
+        let plan = activeWorkspace.goal || '';
+
+        // Defensive check to ensure 'plan' is a string. If it's an object or
+        // something else, treat it as an empty plan to prevent rendering '[object Object]'.
+        if (typeof plan !== 'string') {
+            console.error("Malformed action plan data (workspace.goal). Expected string, got:", plan);
+            plan = '';
+        }
+
         if (plan) {
             const html = marked.parse(plan);
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = html;
-            
-            // Make checkboxes interactive
-            tempDiv.querySelectorAll('li.task-list-item').forEach((li, index) => {
+            DOMElements.actionPlanDisplay.innerHTML = html;
+
+            // Make checkboxes in the newly rendered HTML interactive.
+            DOMElements.actionPlanDisplay.querySelectorAll('li.task-list-item').forEach((li, index) => {
                 const checkbox = li.querySelector('input[type="checkbox"]');
                 if (checkbox) {
                     checkbox.dataset.lineIndex = index;
                     checkbox.addEventListener('change', handleTaskToggle);
                 }
             });
-            DOMElements.actionPlanDisplay.innerHTML = '';
-            DOMElements.actionPlanDisplay.appendChild(tempDiv);
         } else {
             DOMElements.actionPlanDisplay.innerHTML = '点击设定本工作空间的行动计划...';
         }
-        DOMElements.actionPlanDisplay.classList.toggle('has-content', !!plan); 
+        DOMElements.actionPlanDisplay.classList.toggle('has-content', !!plan);
     }
 
     // --- Core Logic & App Flow ---
@@ -865,7 +875,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     async function createNewWorkspace(name) { 
         const newCard = { id: `card_${Date.now()}`, textContent: '欢迎使用！双击卡片可以编辑内容，点击下方的“探索”按钮可以围绕卡片进行对话。', htmlContent: '<p>欢迎使用！双击卡片可以编辑内容，点击下方的“探索”按钮可以围绕卡片进行对话。</p>', chats: [], tags: [], createdAt: new Date().toISOString() };
-        const newWorkspace = { id: `ws_${Date.now()}`, name: name, createdAt: new Date().toISOString(), goal: `- [ ] 探索V4.3新功能\n- [ ] 创建我的第一个项目计划`, cards: [newCard], whiteboardLayout: { nodes: [], edges: [], notes: [] } }; 
+        const newWorkspace = { id: `ws_${Date.now()}`, name: name, createdAt: new Date().toISOString(), goal: '', cards: [newCard], whiteboardLayout: { nodes: [], edges: [], notes: [] } }; 
         await dbActions.put('workspaces', newWorkspace); 
         state.workspaces.push(newWorkspace); 
         await switchActiveWorkspace(newWorkspace.id); 
@@ -1538,6 +1548,67 @@ Please provide only the markdown task list.`;
         });
     }
 
+    async function handleAiGenerateOutline() {
+        const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
+        if (!activeWorkspace || !activeWorkspace.goal) {
+            alert('请先设定一个行动计划/目标，AI 将基于此生成大纲。');
+            return;
+        }
+
+        const btn = DOMElements.aiGenerateOutlineBtn;
+        btn.disabled = true;
+        btn.textContent = '生成中...';
+
+        const prompt = `Based on the following project goal/action plan, please generate a logical report outline.
+    Provide the outline as a simple, numbered list of chapter titles. Do not add any extra explanations or formatting.
+
+    Example output:
+    1. Introduction
+    2. Background Analysis
+    3. Core Findings
+    4. Recommendations
+    5. Conclusion
+
+    Project Goal / Action Plan:
+    ---
+    ${activeWorkspace.goal}
+    ---
+    `;
+
+        try {
+            const outlineText = await callLLM([{ role: 'user', content: prompt }], () => {});
+            const lines = outlineText.split('\n').filter(line => line.trim() !== '');
+            
+            const chapterTitles = lines.map(line => line.replace(/^\d+\.\s*/, '').trim()).filter(title => title);
+
+            if (chapterTitles.length === 0) {
+                throw new Error("AI未能生成有效的大纲。");
+            }
+            
+            if (state.synthesisOutline.length > 0 && state.synthesisOutline.some(item => item.title || item.cardIds.length > 0)) {
+                if (!confirm('AI已生成新大纲，这会覆盖当前的大纲内容。要继续吗？')) {
+                     btn.disabled = false;
+                     btn.textContent = 'AI 辅助生成';
+                     return;
+                }
+            }
+            
+            state.synthesisOutline = chapterTitles.map(title => ({
+                id: `chap_${Date.now()}_${Math.random()}`,
+                title: title,
+                cardIds: []
+            }));
+            
+            renderSynthesisOutline();
+
+        } catch (error) {
+            alert(`AI 大纲生成失败: ${error.message}`);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'AI 辅助生成';
+        }
+    }
+
     async function handleSynthesisGenerate() {
         const activeWorkspace = state.workspaces.find(ws => ws.id === state.activeWorkspaceId);
         if (!activeWorkspace) return;
@@ -1652,6 +1723,7 @@ Please provide only the markdown task list.`;
         state.synthesisOutline.push({ id: `chap_${Date.now()}`, title: '新章节', cardIds: [] });
         renderSynthesisOutline();
     });
+    DOMElements.aiGenerateOutlineBtn.addEventListener('click', handleAiGenerateOutline);
     DOMElements.synthesisGenerateBtn.addEventListener('click', handleSynthesisGenerate);
 
     // Context Menu Handlers
